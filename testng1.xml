@@ -1,19 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
 
-<suite name="Test Suite">
+<suite name="Test Suite" thread-count="2" parallel="tests" >
 <listeners>
 <listener class-name="ExtentReport.ExtentReport" />
-</listeners>
-
-<listeners>
 <listener class-name="listner.listnerClass" />
 </listeners>
 
 
-  <test thread-count="5" name="Test">
+  <test name='Login' >
     <classes>
       <class name="project.LoginPageTest"/>
     </classes>
-  </test> <!-- Test -->
+  </test>
+  <test name='Home' >
+    <classes>
+      <class name="project.HomePageTest"/>
+    </classes>
+  </test>
+  
+  
+   <!-- Test -->
 </suite> <!-- Suite -->

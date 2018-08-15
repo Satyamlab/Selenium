@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.firefox.FirefoxDriver;
 import org.testng.annotations.Test;
 
 public class Base {
@@ -18,11 +19,23 @@ public class Base {
 	
 	
 	public static void initialisation() throws IOException, InterruptedException{
-	
-	System.setProperty("webdriver.chrome.driver","./ChromeDriver/chromedriver.exe");
-
-	driver = new ChromeDriver();
-	
+		
+	if(Property("browser").equalsIgnoreCase("chrome"))
+	{
+		System.setProperty("webdriver.chrome.driver","./ChromeDriver/chromedriver.exe");
+		driver = new ChromeDriver();
+	}
+	else if(Property("browser").equalsIgnoreCase("firefox"))
+	{
+		System.setProperty("webdriver.firefox.driver","./ChromeDriver/chromedriver.exe");
+		driver = new FirefoxDriver();
+	}
+	else if(Property("browser").equalsIgnoreCase("ie"))
+	{
+		System.setProperty("webdriver.chrome.driver","./ChromeDriver/chromedriver.exe");
+		driver = new FirefoxDriver();
+	}
+		
 	driver.get(Property("Url"));
 	driver.manage().window().maximize();
 	driver.manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<suite thread-count="2" verbose="0" name="Failed suite [Test Suite]" parallel="methods">
+  <listeners>
+    <listener class-name="ExtentReport.ExtentReport"/>
+    <listener class-name="listner.listnerClass"/>
+  </listeners>
+  <test name="satyam(failed)" parallel="methods">
+    <classes>
+      <class name="project.LoginPageTest">
+        <methods>
+          <include name="setup"/>
+          <include name="login"/>
+          <include name="close"/>
+        </methods>
+      </class> <!-- project.LoginPageTest -->
+      <class name="project.HomePageTest">
+        <methods>
+          <include name="setup"/>
+          <include name="Homepage"/>
+        </methods>
+      </class> <!-- project.HomePageTest -->
+    </classes>
+  </test> <!-- satyam(failed) -->
+</suite> <!-- Failed suite [Test Suite] -->

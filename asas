@@ -382,6 +382,118 @@ public class XmlComparisonSteps {
 
 
 
+--------------------------------------------------------------------
+
+import org.xmlunit.builder.DiffBuilder;
+import org.xmlunit.diff.Diff;
+import org.xmlunit.diff.Difference;
+import org.xmlunit.diff.DifferenceEvaluators;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import java.io.ByteArrayInputStream;
+import java.io.StringWriter;
+import java.util.Iterator;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import com.thoughtworks.gauge.Step;
+import com.thoughtworks.gauge.messages.Messages;
+
+public class XmlComparisonSteps {
+
+    @Step("Compare XML responses after normalizing namespaces")
+    public void compareXmlResponsesAfterNormalizingNamespaces() throws Exception {
+        // Example SOAP-like XML responses containing namespaces
+        String response1 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
+                "<soapenv:Body><ns:response xmlns:ns=\"http://example.com/schema\">" +
+                "<ns:name>John</ns:name><ns:age>30</ns:age></ns:response></soapenv:Body></soapenv:Envelope>";
+        
+        String response2 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
+                "<soapenv:Body><ns:response xmlns:ns=\"http://example.com/schema\">" +
+                "<ns:name>John</ns:name><ns:age>31</ns:age></ns:response></soapenv:Body></soapenv:Envelope>";
+
+        // Normalize namespaces in both XML responses
+        String normalizedResponse1 = normalizeXmlNamespaces(response1);
+        String normalizedResponse2 = normalizeXmlNamespaces(response2);
+
+        // Compare the normalized XML responses
+        String diffHtml = getXmlDiffAsHtml(normalizedResponse1, normalizedResponse2);
+
+        // Embed the diff in the Gauge report
+        Messages.writeMessage("<div>" + diffHtml + "</div>");
+    }
+
+    // Function to remove namespaces from the XML
+    private static String normalizeXmlNamespaces(String xml) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        Document document = builder.parse(new ByteArrayInputStream(xml.getBytes()));
+
+        // Recursively remove namespaces from the document
+        removeNamespaces(document.getDocumentElement());
+
+        // Convert Document back to a string
+        TransformerFactory transformerFactory = TransformerFactory.newInstance();
+        Transformer transformer = transformerFactory.newTransformer();
+        transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+        transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+
+        StringWriter writer = new StringWriter();
+        transformer.transform(new DOMSource(document), new StreamResult(writer));
+
+        return writer.toString();
+    }
+
+    // Recursive function to remove namespaces from nodes
+    private static void removeNamespaces(Node node) {
+        if (node.getNodeType() == Node.ELEMENT_NODE) {
+            // Remove the namespace prefix from the element
+            String nodeName = node.getLocalName();
+            node.getOwnerDocument().renameNode(node, null, nodeName);
+
+            // Recursively process child nodes
+            NodeList children = node.getChildNodes();
+            for (int i = 0; i < children.getLength(); i++) {
+                removeNamespaces(children.item(i));
+            }
+        }
+    }
+
+    // Function to generate XML diff as an HTML formatted string
+    private static String getXmlDiffAsHtml(String xml1, String xml2) throws Exception {
+        Diff xmlDiff = DiffBuilder.compare(xml1)
+                                  .withTest(xml2)
+                                  .withDifferenceEvaluator(DifferenceEvaluators.Default)
+                                  .checkForSimilar()  // Allow checking similarities while ignoring insignificant differences
+                                  .ignoreWhitespace()  // Ignore formatting/whitespace differences
+                                  .build();
+
+        Iterator<Difference> differences = xmlDiff.getDifferences().iterator();
+
+        StringBuilder diffHtml = new StringBuilder();
+        diffHtml.append("<html><body><h2>XML Differences</h2><table border='1' style='border-collapse: collapse;'>");
+
+        while (differences.hasNext()) {
+            Difference difference = differences.next();
+            diffHtml.append("<tr>");
+            diffHtml.append("<td><b>XPath:</b> ").append(difference.getComparison().getControlDetails().getXPath()).append("</td>");
+            diffHtml.append("<td><b>Expected:</b> ").append(difference.getComparison().getControlDetails().getValue()).append("</td>");
+            diffHtml.append("<td><b>Actual:</b> ").append(difference.getComparison().getTestDetails().getValue()).append("</td>");
+            diffHtml.append("</tr>");
+        }
+
+        diffHtml.append("</table></body></html>");
+        return diffHtml.toString();
+    }
+}
+
+
 
 
 

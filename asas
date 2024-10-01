@@ -262,6 +262,126 @@ public class XmlComparisonSteps {
 
 
 
+--------------------------------------------------
+
+import org.xmlunit.builder.DiffBuilder;
+import org.xmlunit.diff.Diff;
+import org.xmlunit.diff.Difference;
+import org.xmlunit.diff.DifferenceEvaluators;
+
+import javax.xml.namespace.NamespaceContext;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.ByteArrayInputStream;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Collections;
+import java.util.List;
+import java.util.ArrayList;
+
+import com.thoughtworks.gauge.Step;
+import com.thoughtworks.gauge.messages.Messages;
+
+public class XmlComparisonSteps {
+
+    @Step("Compare XML responses with namespaces from two APIs and highlight differences")
+    public void compareXmlResponsesWithNamespacesAndHighlightDifferences() throws Exception {
+        // Example SOAP-like XML responses containing namespaces
+        String response1 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
+                "<soapenv:Body><ns:response xmlns:ns=\"http://example.com/schema\">" +
+                "<ns:name>John</ns:name><ns:age>30</ns:age></ns:response></soapenv:Body></soapenv:Envelope>";
+        
+        String response2 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
+                "<soapenv:Body><ns:response xmlns:ns=\"http://example.com/schema\">" +
+                "<ns:name>John</ns:name><ns:age>31</ns:age></ns:response></soapenv:Body></soapenv:Envelope>";
+
+        // Compare the two XML responses and get the diff as an HTML string
+        String diffHtml = getXmlDiffAsHtml(response1, response2);
+
+        // Embed the diff in the Gauge report
+        Messages.writeMessage("<div>" + diffHtml + "</div>");
+    }
+
+    // Function to generate XML diff as an HTML formatted string while handling namespaces
+    private static String getXmlDiffAsHtml(String xml1, String xml2) throws Exception {
+        // Parse XML into Documents
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);  // Enable namespace awareness
+        DocumentBuilder builder = factory.newDocumentBuilder();
+
+        ByteArrayInputStream input1 = new ByteArrayInputStream(xml1.getBytes());
+        ByteArrayInputStream input2 = new ByteArrayInputStream(xml2.getBytes());
+
+        // Use XMLUnit to compare XMLs while considering namespaces
+        Diff xmlDiff = DiffBuilder.compare(input1)
+                                  .withTest(input2)
+                                  .withDifferenceEvaluator(DifferenceEvaluators.Default)
+                                  .checkForSimilar()  // Allow checking similarities while considering namespaces
+                                  .ignoreWhitespace()  // Ignore minor differences like formatting or white spaces
+                                  .withNamespaceContext(new CustomNamespaceContext())  // Handle namespace mappings
+                                  .build();
+
+        // Iterate over the differences and create an HTML representation
+        Iterator<Difference> differences = xmlDiff.getDifferences().iterator();
+
+        StringBuilder diffHtml = new StringBuilder();
+        diffHtml.append("<html><body><h2>XML Differences</h2><table border='1' style='border-collapse: collapse;'>");
+
+        while (differences.hasNext()) {
+            Difference difference = differences.next();
+            diffHtml.append("<tr>");
+            diffHtml.append("<td><b>XPath:</b> ").append(difference.getComparison().getControlDetails().getXPath()).append("</td>");
+            diffHtml.append("<td><b>Expected:</b> ").append(difference.getComparison().getControlDetails().getValue()).append("</td>");
+            diffHtml.append("<td><b>Actual:</b> ").append(difference.getComparison().getTestDetails().getValue()).append("</td>");
+            diffHtml.append("</tr>");
+        }
+
+        diffHtml.append("</table></body></html>");
+        return diffHtml.toString();
+    }
+
+    // Custom NamespaceContext implementation to provide namespace mappings for XML comparison
+    private static class CustomNamespaceContext implements NamespaceContext {
+        private final Map<String, String> prefixToUriMap;
+
+        public CustomNamespaceContext() {
+            // Define your namespaces here
+            prefixToUriMap = new HashMap<>();
+            prefixToUriMap.put("soapenv", "http://schemas.xmlsoap.org/soap/envelope/");
+            prefixToUriMap.put("ns", "http://example.com/schema");
+        }
+
+        @Override
+        public String getNamespaceURI(String prefix) {
+            return prefixToUriMap.get(prefix);
+        }
+
+        @Override
+        public String getPrefix(String namespaceURI) {
+            for (Map.Entry<String, String> entry : prefixToUriMap.entrySet()) {
+                if (entry.getValue().equals(namespaceURI)) {
+                    return entry.getKey();
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public Iterator<String> getPrefixes(String namespaceURI) {
+            List<String> prefixes = new ArrayList<>();
+            for (Map.Entry<String, String> entry : prefixToUriMap.entrySet()) {
+                if (entry.getValue().equals(namespaceURI)) {
+                    prefixes.add(entry.getKey());
+                }
+            }
+            return prefixes.iterator();
+        }
+    }
+}
+
+
+
 
 
 

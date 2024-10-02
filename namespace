@@ -62,7 +62,7 @@ public class XmlComparisonSteps {
         // Validate that tags with namespaces match between the two XML documents
         String tagValidationResult = validateMatchingNamespaceTags(normalizedDoc1, normalizedDoc2);
         if (!tagValidationResult.isEmpty()) {
-            return "<h3>Tag Mismatches:</h3>" + tagValidationResult; // Early return if tags don't match
+            return "<h3>Namespace Tag Mismatches:</h3>" + tagValidationResult; // Early return if tags don't match
         }
 
         // Convert documents back to strings for content comparison
@@ -77,8 +77,8 @@ public class XmlComparisonSteps {
                                   .ignoreWhitespace() // Ignore whitespace differences
                                   .build();
 
-        // Generate HTML diff report
-        return generateHtmlDiff(xmlDiff);
+        // Generate HTML diff report including namespace differences
+        return "<h3>XML Content Differences</h3>" + generateHtmlDiff(xmlDiff);
     }
 
     // Function to normalize namespaces in the XML document by matching the URIs
@@ -121,7 +121,10 @@ public class XmlComparisonSteps {
         for (Map.Entry<String, String> entry : nsMap1.entrySet()) {
             String uri1 = entry.getValue();
             if (!nsMap2.containsValue(uri1)) {
-                validationResult.append("Namespace URI not found in both documents: ").append(uri1).append("<br>");
+                validationResult.append("<tr><td>").append(entry.getKey())
+                        .append("</td><td>").append(uri1)
+                        .append("</td><td>").append("Missing in API2")
+                        .append("</td></tr>");
             }
         }
 
@@ -129,11 +132,19 @@ public class XmlComparisonSteps {
         for (Map.Entry<String, String> entry : nsMap2.entrySet()) {
             String uri2 = entry.getValue();
             if (!nsMap1.containsValue(uri2)) {
-                validationResult.append("Namespace URI not found in both documents: ").append(uri2).append("<br>");
+                validationResult.append("<tr><td>").append(entry.getKey())
+                        .append("</td><td>").append(uri2)
+                        .append("</td><td>").append("Missing in API1")
+                        .append("</td></tr>");
             }
         }
 
-        return validationResult.toString();
+        if (validationResult.length() > 0) {
+            return "<table border='1'><thead><tr><th>Namespace</th><th>URI</th><th>Status</th></tr></thead><tbody>"
+                    + validationResult.toString() + "</tbody></table>";
+        }
+
+        return "";
     }
 
     // Function to extract namespaces (prefix -> URI) from a document
@@ -174,7 +185,7 @@ public class XmlComparisonSteps {
     // Function to generate HTML diff report from XML differences
     private String generateHtmlDiff(Diff xmlDiff) {
         StringBuilder diffHtml = new StringBuilder();
-        diffHtml.append("<html><body><h2>XML Differences</h2><table border='1' style='border-collapse: collapse;'>");
+        diffHtml.append("<table border='1' style='border-collapse: collapse;'><thead><tr><th>XPath</th><th>Expected</th><th>Actual</th></tr></thead><tbody>");
 
         Iterator<Difference> differences = xmlDiff.getDifferences().iterator();
         while (differences.hasNext()) {
@@ -186,7 +197,7 @@ public class XmlComparisonSteps {
             diffHtml.append("</tr>");
         }
 
-        diffHtml.append("</table></body></html>");
+        diffHtml.append("</tbody></table>");
         return diffHtml.toString();
     }
 }

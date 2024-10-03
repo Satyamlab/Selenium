@@ -2,7 +2,6 @@ import org.xmlunit.builder.DiffBuilder;
 import org.xmlunit.diff.Diff;
 import org.xmlunit.diff.Difference;
 import org.xmlunit.diff.DifferenceEvaluators;
-import org.xml.sax.InputSource;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -24,26 +23,38 @@ import com.thoughtworks.gauge.messages.Messages;
 public class XmlComparisonSteps {
 
     @Step("Compare XML responses and highlight differences in namespaces and content")
-    public void compareXmlResponsesWithNsTags() throws Exception {
-        // Example XML API responses with namespaces inside <DisambiguateResponse>
+    public void compareXmlResponses() throws Exception {
+        // Sample XML API responses
         String response1 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
-                "<soapenv:Body><ns2:DisambiguateResponse xmlns=\"http://example.com/schema2\" xmlns:ns1=\"http://example.com/schema1\">" +
-                "<ns2:name>John</ns2:name><ns2:age>30</ns2:age></ns2:DisambiguateResponse></soapenv:Body></soapenv:Envelope>";
+                "<soapenv:Body>" +
+                "<ns2:DisambiguateResponse xmlns=\"http://example.com/schema2\" " +
+                "xmlns:ns1=\"http://example.com/schema1\" " +
+                "xmlns:ns2=\"http://example.com/schema2\" " +
+                "xmlns:ns3=\"http://example.com/schema3\">" +
+                "<ns2:name><ns3:callerreference>ABC</ns3:callerreference>" +
+                "<ns3:valid>Yes</ns3:valid></ns2:name>" +
+                "<ns2:age>30</ns2:age></ns2:DisambiguateResponse>" +
+                "</soapenv:Body></soapenv:Envelope>";
 
         String response2 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
-                "<soapenv:Body><ns1:DisambiguateResponse xmlns=\"http://example.com/schema2\" xmlns:ns2=\"http://example.com/schema3\">" +
-                "<ns1:name>John</ns1:name><ns1:age>31</ns1:age></ns1:DisambiguateResponse></soapenv:Body></soapenv:Envelope>";
+                "<soapenv:Body>" +
+                "<ns2:DisambiguateResponse xmlns=\"http://example.com/schema2\" " +
+                "xmlns:ns4=\"http://example.com/schema1\" " +
+                "xmlns:ns5=\"http://example.com/schema2\" " +
+                "xmlns:ns6=\"http://example.com/schema3\" " +
+                "xmlns:ns7=\"http://example.com/schema4\">" +
+                "<ns4:name><ns6:callerreference>ABC</ns6:callerreference>" +
+                "<ns6:valid>Yes</ns6:valid></ns4:name>" +
+                "<ns4:age>30</ns4:age></ns4:DisambiguateResponse>" +
+                "</soapenv:Body></soapenv:Envelope>";
 
-        // Compare XML responses
-        String diffHtml = compareXmlResponses(response1, response2);
-
-        // Embed the differences in the Gauge HTML report
-        Messages.writeMessage("<div>" + diffHtml + "</div>");
+        // Compare XML responses and generate report
+        String report = compareXmlResponses(response1, response2);
+        Messages.writeMessage("<div>" + report + "</div>");
     }
 
-    // Function to compare XML responses, focusing on the DisambiguateResponse element
     private String compareXmlResponses(String xml1, String xml2) throws Exception {
-        // Parse both XMLs with namespace awareness
+        // Parse both XMLs
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         DocumentBuilder builder = factory.newDocumentBuilder();
@@ -56,15 +67,15 @@ public class XmlComparisonSteps {
         Element responseElement2 = extractDisambiguateResponse(doc2);
 
         // Extract namespaces from both documents
-        Map<String, String> nsMap1 = extractNamespaces(doc1);
-        Map<String, String> nsMap2 = extractNamespaces(doc2);
+        Map<String, String> nsMap1 = extractNamespaces(responseElement1);
+        Map<String, String> nsMap2 = extractNamespaces(responseElement2);
 
         // Compare namespaces and generate an HTML diff for namespaces
         String nsDiffHtml = compareNamespaces(nsMap1, nsMap2);
 
-        // Normalize namespaces by URIs (extract dynamically)
-        Document normalizedDoc1 = normalizeNamespaces(responseElement1, doc2);
-        Document normalizedDoc2 = normalizeNamespaces(responseElement2, doc1);
+        // Normalize namespaces by URIs for further XML comparison
+        Document normalizedDoc1 = normalizeNamespaces(responseElement1, nsMap2);
+        Document normalizedDoc2 = normalizeNamespaces(responseElement2, nsMap1);
 
         // Convert documents back to strings for comparison
         String normalizedXml1 = elementToString(normalizedDoc1.getDocumentElement());
@@ -72,51 +83,26 @@ public class XmlComparisonSteps {
 
         // Compare the two normalized XML documents
         Diff xmlDiff = DiffBuilder.compare(normalizedXml1)
-                                  .withTest(normalizedXml2)
-                                  .withDifferenceEvaluator(DifferenceEvaluators.Default)
-                                  .checkForSimilar() // Allow for structural similarity
-                                  .ignoreWhitespace() // Ignore whitespace differences
-                                  .build();
+                .withTest(normalizedXml2)
+                .withDifferenceEvaluator(DifferenceEvaluators.Default)
+                .checkForSimilar() // Allow for structural similarity
+                .ignoreWhitespace() // Ignore whitespace differences
+                .build();
 
-        // Generate enhanced HTML diff report including namespace and XML content differences
+        // Generate HTML report
         return "<h2>XML Comparison Report</h2>" +
-               "<h3>Summary of Differences</h3>" + generateSummary(nsMap1, nsMap2, xmlDiff) +
-               "<h3>Namespace Differences</h3>" + nsDiffHtml +
-               "<h3>XML Content Differences</h3>" + generateHtmlDiff(xmlDiff);
+                "<h3>Namespace Differences</h3>" + nsDiffHtml +
+                "<h3>Content Differences</h3>" + generateHtmlDiff(xmlDiff);
     }
 
-    // Function to extract the <DisambiguateResponse> element from the XML document
     private Element extractDisambiguateResponse(Document doc) {
-        // Find the DisambiguateResponse element by its tag name, which may have any prefix
         return (Element) doc.getElementsByTagNameNS("*", "DisambiguateResponse").item(0);
     }
 
-    // Normalize namespaces in the given element by matching namespaces from the other document
-    private Document normalizeNamespaces(Element element, Document targetDoc) throws Exception {
-        // Create a new empty document
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Document newDoc = builder.newDocument();
-
-        // Import the element into the new document
-        newDoc.appendChild(newDoc.importNode(element, true));
-
-        // Extract namespaces from the target document and match URIs
-        Map<String, String> targetNsMap = extractNamespaces(targetDoc);
-
-        // Normalize namespaces based on URIs
-        normalizeNamespacePrefixes(newDoc.getDocumentElement(), targetNsMap);
-
-        return newDoc;
-    }
-
-    // Function to extract namespaces from the document (prefix -> URI map)
-    private Map<String, String> extractNamespaces(Document doc) {
+    private Map<String, String> extractNamespaces(Element element) {
         Map<String, String> namespaceMap = new HashMap<>();
-        Element root = doc.getDocumentElement();
-        for (int i = 0; i < root.getAttributes().getLength(); i++) {
-            Node attr = root.getAttributes().item(i);
+        for (int i = 0; i < element.getAttributes().getLength(); i++) {
+            Node attr = element.getAttributes().item(i);
             if (attr.getNodeName().startsWith("xmlns:")) {
                 String prefix = attr.getNodeName().substring(6);
                 String uri = attr.getNodeValue();
@@ -126,29 +112,27 @@ public class XmlComparisonSteps {
         return namespaceMap;
     }
 
-    // Function to compare namespaces between two XML documents and return HTML diff
     private String compareNamespaces(Map<String, String> nsMap1, Map<String, String> nsMap2) {
         StringBuilder nsDiffHtml = new StringBuilder();
         nsDiffHtml.append("<table border='1' style='border-collapse: collapse; width:100%;'><thead><tr><th>Prefix</th><th>URI (Response 1)</th><th>URI (Response 2)</th></tr></thead><tbody>");
 
-        // Find namespaces missing in Response 2
+        // Check for matching namespaces
         for (Map.Entry<String, String> entry : nsMap1.entrySet()) {
-            String prefix = entry.getKey();
+            String prefix1 = entry.getKey();
             String uri1 = entry.getValue();
-            String uri2 = nsMap2.get(prefix);
-
-            if (uri2 == null) {
-                nsDiffHtml.append("<tr style='background-color: #ffcccc;'><td>").append(prefix).append("</td><td>").append(uri1).append("</td><td><b>Missing</b></td></tr>");
-            } else if (!uri1.equals(uri2)) {
-                nsDiffHtml.append("<tr style='background-color: #ffeb99;'><td>").append(prefix).append("</td><td>").append(uri1).append("</td><td>").append(uri2).append("</td></tr>");
+            String prefix2 = getMatchingPrefix(nsMap2, uri1);
+            if (prefix2 == null) {
+                nsDiffHtml.append("<tr style='background-color: #ffcccc;'><td>").append(prefix1).append("</td><td>").append(uri1).append("</td><td><b>Missing</b></td></tr>");
+            } else {
+                nsDiffHtml.append("<tr style='background-color: #ffeb99;'><td>").append(prefix1).append("</td><td>").append(uri1).append("</td><td>").append(nsMap2.get(prefix2)).append("</td></tr>");
             }
         }
 
-        // Find namespaces present in Response 2 but missing in Response 1
+        // Check for extra namespaces in Response 2
         for (Map.Entry<String, String> entry : nsMap2.entrySet()) {
-            String prefix = entry.getKey();
-            if (!nsMap1.containsKey(prefix)) {
-                nsDiffHtml.append("<tr style='background-color: #ffcccc;'><td>").append(prefix).append("</td><td><b>Missing</b></td><td>").append(entry.getValue()).append("</td></tr>");
+            String prefix2 = entry.getKey();
+            if (!nsMap1.containsValue(entry.getValue())) {
+                nsDiffHtml.append("<tr style='background-color: #ffcccc;'><td>").append(prefix2).append("</td><td><b>Missing</b></td><td>").append(entry.getValue()).append("</td></tr>");
             }
         }
 
@@ -156,25 +140,7 @@ public class XmlComparisonSteps {
         return nsDiffHtml.toString();
     }
 
-    // Function to normalize namespace prefixes in the document
-    private void normalizeNamespacePrefixes(Element element, Map<String, String> targetNsMap) {
-        for (int i = 0; i < element.getAttributes().getLength(); i++) {
-            Node attr = element.getAttributes().item(i);
-            if (attr.getNodeName().startsWith("xmlns:")) {
-                String prefix = attr.getNodeName().substring(6);
-                String uri = attr.getNodeValue();
-
-                // If the URI matches one from the target document, normalize the prefix
-                String targetPrefix = getPrefixByUri(targetNsMap, uri);
-                if (targetPrefix != null && !targetPrefix.equals(prefix)) {
-                    element.setAttribute("xmlns:" + targetPrefix, uri);
-                }
-            }
-        }
-    }
-
-    // Function to get the prefix for a given URI from the namespace map
-    private String getPrefixByUri(Map<String, String> nsMap, String uri) {
+    private String getMatchingPrefix(Map<String, String> nsMap, String uri) {
         for (Map.Entry<String, String> entry : nsMap.entrySet()) {
             if (entry.getValue().equals(uri)) {
                 return entry.getKey();
@@ -183,16 +149,30 @@ public class XmlComparisonSteps {
         return null;
     }
 
-    // Function to generate a summary of differences for the report
-    private String generateSummary(Map<String, String> nsMap1, Map<String, String> nsMap2, Diff xmlDiff) {
-        StringBuilder summary = new StringBuilder();
-        summary.append("<p><strong>Namespaces in Response 1:</strong> ").append(nsMap1.size()).append("</p>");
-        summary.append("<p><strong>Namespaces in Response 2:</strong> ").append(nsMap2.size()).append("</p>");
-        summary.append("<p><strong>Content Differences:</strong> ").append(xmlDiff.hasDifferences() ? "Yes" : "No").append("</p>");
-        return summary.toString();
+    private Document normalizeNamespaces(Element element, Map<String, String> targetNsMap) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        Document newDoc = builder.newDocument();
+        newDoc.appendChild(newDoc.importNode(element, true));
+        normalizeNamespacePrefixes(newDoc.getDocumentElement(), targetNsMap);
+        return newDoc;
     }
 
-    // Helper function to convert an element back to a string
+    private void normalizeNamespacePrefixes(Element element, Map<String, String> targetNsMap) {
+        for (int i = 0; i < element.getAttributes().getLength(); i++) {
+            Node attr = element.getAttributes().item(i);
+            if (attr.getNodeName().startsWith("xmlns:")) {
+                String prefix = attr.getNodeName().substring(6);
+                String uri = attr.getNodeValue();
+                String targetPrefix = getMatchingPrefix(targetNsMap, uri);
+                if (targetPrefix != null && !targetPrefix.equals(prefix)) {
+                    element.setAttribute("xmlns:" + targetPrefix, uri);
+                }
+            }
+        }
+    }
+
     private String elementToString(Element element) throws Exception {
         TransformerFactory transformerFactory = TransformerFactory.newInstance();
         Transformer transformer = transformerFactory.newTransformer();
@@ -201,14 +181,17 @@ public class XmlComparisonSteps {
         return writer.getBuffer().toString();
     }
 
-    // Function to generate HTML report from XMLUnit diff
     private String generateHtmlDiff(Diff xmlDiff) {
         StringBuilder html = new StringBuilder();
         html.append("<ul>");
         for (Difference difference : xmlDiff.getDifferences()) {
-            html.append("<li style='color: #ff6666;'><b>XPath:</b> ").append(difference.getComparison().getControlDetails().getXPath()).append("<br>")
-                .append("<b>Expected:</b> ").append(difference.getComparison().getControlDetails().getValue()).append("<br>")
-                .append("<b>Actual:</b> ").append(difference.getComparison().getTestDetails().getValue()).append("</li>");
+            html.append("<li style='color: #ff6666;'><b>XPath:</b> ")
+                    .append(difference.getComparison().getControlDetails().getXPath())
+                    .append("<br><b>Expected:</b> ")
+                    .append(difference.getComparison().getControlDetails().getValue())
+                    .append("<br><b>Actual:</b> ")
+                    .append(difference.getComparison().getTestDetails().getValue())
+                    .append("</li>");
         }
         html.append("</ul>");
         return html.toString();

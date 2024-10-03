@@ -2,20 +2,17 @@ import org.xmlunit.builder.DiffBuilder;
 import org.xmlunit.diff.Diff;
 import org.xmlunit.diff.Difference;
 import org.xmlunit.diff.DifferenceEvaluators;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
+import org.w3c.dom.*;
+import org.xml.sax.InputSource;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.*;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.StringReader;
 import java.io.StringWriter;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import com.thoughtworks.gauge.Step;
 import com.thoughtworks.gauge.messages.Messages;
@@ -27,26 +24,34 @@ public class XmlComparisonSteps {
         // Sample XML API responses
         String response1 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
                 "<soapenv:Body>" +
-                "<ns2:DisambiguateResponse xmlns=\"http://example.com/schema2\" " +
+                "<ns2:DisambiguateResponse " +
                 "xmlns:ns1=\"http://example.com/schema1\" " +
                 "xmlns:ns2=\"http://example.com/schema2\" " +
-                "xmlns:ns3=\"http://example.com/schema3\">" +
-                "<ns2:name><ns3:callerreference>ABC</ns3:callerreference>" +
-                "<ns3:valid>Yes</ns3:valid></ns2:name>" +
-                "<ns2:age>30</ns2:age></ns2:DisambiguateResponse>" +
-                "</soapenv:Body></soapenv:Envelope>";
+                "xmlns:ns3=\"http://example.com/schema3\" " +
+                "xmlns:ns4=\"http://example.com/schema4\">" +
+                "<ns2:name>" +
+                "<ns3:callerreference>ABC</ns3:callerreference>" +
+                "<ns3:valid>Yes</ns3:valid>" +
+                "</ns2:name>" +
+                "</ns2:DisambiguateResponse>" +
+                "</soapenv:Body>" +
+                "</soapenv:Envelope>";
 
         String response2 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
                 "<soapenv:Body>" +
-                "<ns2:DisambiguateResponse xmlns=\"http://example.com/schema2\" " +
-                "xmlns:ns4=\"http://example.com/schema1\" " +
-                "xmlns:ns5=\"http://example.com/schema2\" " +
+                "<ns2:DisambiguateResponse " +
+                "xmlns:ns1=\"http://example.com/schema1\" " +
+                "xmlns:ns2=\"http://example.com/schema2\" " +
                 "xmlns:ns6=\"http://example.com/schema3\" " +
-                "xmlns:ns7=\"http://example.com/schema4\">" +
-                "<ns4:name><ns6:callerreference>ABC</ns6:callerreference>" +
-                "<ns6:valid>Yes</ns6:valid></ns4:name>" +
-                "<ns4:age>30</ns4:age></ns4:DisambiguateResponse>" +
-                "</soapenv:Body></soapenv:Envelope>";
+                "xmlns:ns4=\"http://example.com/schema4\" " +
+                "xmlns:ns5=\"http://example.com/schema5\">" +
+                "<ns2:name>" +
+                "<ns6:callerreference>ABC</ns6:callerreference>" +
+                "<ns6:valid>Yes</ns6:valid>" +
+                "</ns2:name>" +
+                "</ns2:DisambiguateResponse>" +
+                "</soapenv:Body>" +
+                "</soapenv:Envelope>";
 
         // Compare XML responses and generate report
         String report = compareXmlResponses(response1, response2);
@@ -66,7 +71,7 @@ public class XmlComparisonSteps {
         Element responseElement1 = extractDisambiguateResponse(doc1);
         Element responseElement2 = extractDisambiguateResponse(doc2);
 
-        // Extract namespaces from both documents
+        // Extract namespaces from both elements
         Map<String, String> nsMap1 = extractNamespaces(responseElement1);
         Map<String, String> nsMap2 = extractNamespaces(responseElement2);
 
@@ -101,38 +106,71 @@ public class XmlComparisonSteps {
 
     private Map<String, String> extractNamespaces(Element element) {
         Map<String, String> namespaceMap = new HashMap<>();
-        for (int i = 0; i < element.getAttributes().getLength(); i++) {
-            Node attr = element.getAttributes().item(i);
-            if (attr.getNodeName().startsWith("xmlns:")) {
-                String prefix = attr.getNodeName().substring(6);
+
+        // Collect namespaces from the current element
+        collectNamespaces(element, namespaceMap);
+
+        // Collect namespaces from ancestor elements
+        Node parent = element.getParentNode();
+        while (parent instanceof Element) {
+            collectNamespaces((Element) parent, namespaceMap);
+            parent = parent.getParentNode();
+        }
+
+        return namespaceMap;
+    }
+
+    private void collectNamespaces(Element element, Map<String, String> namespaceMap) {
+        NamedNodeMap attributes = element.getAttributes();
+        for (int i = 0; i < attributes.getLength(); i++) {
+            Node attr = attributes.item(i);
+            if (attr.getPrefix() != null && attr.getPrefix().equals("xmlns")) {
+                String prefix = attr.getLocalName();
                 String uri = attr.getNodeValue();
                 namespaceMap.put(prefix, uri);
             }
         }
-        return namespaceMap;
     }
 
     private String compareNamespaces(Map<String, String> nsMap1, Map<String, String> nsMap2) {
         StringBuilder nsDiffHtml = new StringBuilder();
-        nsDiffHtml.append("<table border='1' style='border-collapse: collapse; width:100%;'><thead><tr><th>Prefix</th><th>URI (Response 1)</th><th>URI (Response 2)</th></tr></thead><tbody>");
+        nsDiffHtml.append("<table border='1' style='border-collapse: collapse; width:100%;'>")
+                .append("<thead><tr><th>Prefix</th><th>URI (Response 1)</th><th>URI (Response 2)</th></tr></thead><tbody>");
+
+        // All URIs in Response 1
+        Set<String> uris1 = new HashSet<>(nsMap1.values());
+        // All URIs in Response 2
+        Set<String> uris2 = new HashSet<>(nsMap2.values());
 
         // Check for matching namespaces
-        for (Map.Entry<String, String> entry : nsMap1.entrySet()) {
-            String prefix1 = entry.getKey();
-            String uri1 = entry.getValue();
-            String prefix2 = getMatchingPrefix(nsMap2, uri1);
-            if (prefix2 == null) {
-                nsDiffHtml.append("<tr style='background-color: #ffcccc;'><td>").append(prefix1).append("</td><td>").append(uri1).append("</td><td><b>Missing</b></td></tr>");
+        for (Map.Entry<String, String> entry1 : nsMap1.entrySet()) {
+            String prefix1 = entry1.getKey();
+            String uri1 = entry1.getValue();
+
+            // Find matching prefix in nsMap2 by URI
+            String matchingPrefix = null;
+            for (Map.Entry<String, String> entry2 : nsMap2.entrySet()) {
+                if (entry2.getValue().equals(uri1)) {
+                    matchingPrefix = entry2.getKey();
+                    break;
+                }
+            }
+
+            if (matchingPrefix != null) {
+                nsDiffHtml.append("<tr><td>").append(prefix1).append("</td><td>").append(uri1)
+                        .append("</td><td>").append(uri1).append(" (prefix ").append(matchingPrefix).append(")</td></tr>");
             } else {
-                nsDiffHtml.append("<tr style='background-color: #ffeb99;'><td>").append(prefix1).append("</td><td>").append(uri1).append("</td><td>").append(nsMap2.get(prefix2)).append("</td></tr>");
+                nsDiffHtml.append("<tr style='background-color: #ffcccc;'><td>").append(prefix1).append("</td><td>").append(uri1)
+                        .append("</td><td><b>Missing</b></td></tr>");
             }
         }
 
         // Check for extra namespaces in Response 2
-        for (Map.Entry<String, String> entry : nsMap2.entrySet()) {
-            String prefix2 = entry.getKey();
-            if (!nsMap1.containsValue(entry.getValue())) {
-                nsDiffHtml.append("<tr style='background-color: #ffcccc;'><td>").append(prefix2).append("</td><td><b>Missing</b></td><td>").append(entry.getValue()).append("</td></tr>");
+        for (Map.Entry<String, String> entry2 : nsMap2.entrySet()) {
+            String uri2 = entry2.getValue();
+            if (!uris1.contains(uri2)) {
+                nsDiffHtml.append("<tr style='background-color: #ccffcc;'><td>").append(entry2.getKey())
+                        .append("</td><td><b>Missing</b></td><td>").append(uri2).append("</td></tr>");
             }
         }
 
@@ -140,35 +178,52 @@ public class XmlComparisonSteps {
         return nsDiffHtml.toString();
     }
 
-    private String getMatchingPrefix(Map<String, String> nsMap, String uri) {
-        for (Map.Entry<String, String> entry : nsMap.entrySet()) {
-            if (entry.getValue().equals(uri)) {
-                return entry.getKey();
-            }
-        }
-        return null;
-    }
-
     private Document normalizeNamespaces(Element element, Map<String, String> targetNsMap) throws Exception {
+        // Create a new Document for normalization
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         DocumentBuilder builder = factory.newDocumentBuilder();
         Document newDoc = builder.newDocument();
-        newDoc.appendChild(newDoc.importNode(element, true));
+
+        // Import the element into the new document
+        Node importedNode = newDoc.importNode(element, true);
+        newDoc.appendChild(importedNode);
+
+        // Normalize namespace prefixes
         normalizeNamespacePrefixes(newDoc.getDocumentElement(), targetNsMap);
+
         return newDoc;
     }
 
     private void normalizeNamespacePrefixes(Element element, Map<String, String> targetNsMap) {
-        for (int i = 0; i < element.getAttributes().getLength(); i++) {
-            Node attr = element.getAttributes().item(i);
-            if (attr.getNodeName().startsWith("xmlns:")) {
-                String prefix = attr.getNodeName().substring(6);
-                String uri = attr.getNodeValue();
-                String targetPrefix = getMatchingPrefix(targetNsMap, uri);
-                if (targetPrefix != null && !targetPrefix.equals(prefix)) {
-                    element.setAttribute("xmlns:" + targetPrefix, uri);
+        NamedNodeMap attributes = element.getAttributes();
+
+        // Map URIs to prefixes in the target namespace map
+        Map<String, String> uriToPrefixMap = new HashMap<>();
+        for (Map.Entry<String, String> entry : targetNsMap.entrySet()) {
+            uriToPrefixMap.put(entry.getValue(), entry.getKey());
+        }
+
+        // Update the namespace prefixes in the element
+        for (int i = 0; i < attributes.getLength(); i++) {
+            Attr attr = (Attr) attributes.item(i);
+            if (attr.getPrefix() != null && attr.getPrefix().equals("xmlns")) {
+                String uri = attr.getValue();
+                String targetPrefix = uriToPrefixMap.get(uri);
+                if (targetPrefix != null && !attr.getLocalName().equals(targetPrefix)) {
+                    // Update the prefix
+                    element.removeAttributeNode(attr);
+                    element.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:" + targetPrefix, uri);
                 }
+            }
+        }
+
+        // Recursively normalize child elements
+        NodeList childNodes = element.getChildNodes();
+        for (int j = 0; j < childNodes.getLength(); j++) {
+            Node child = childNodes.item(j);
+            if (child instanceof Element) {
+                normalizeNamespacePrefixes((Element) child, targetNsMap);
             }
         }
     }
@@ -176,6 +231,10 @@ public class XmlComparisonSteps {
     private String elementToString(Element element) throws Exception {
         TransformerFactory transformerFactory = TransformerFactory.newInstance();
         Transformer transformer = transformerFactory.newTransformer();
+
+        // Remove XML declaration
+        transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+
         StringWriter writer = new StringWriter();
         transformer.transform(new DOMSource(element), new StreamResult(writer));
         return writer.getBuffer().toString();

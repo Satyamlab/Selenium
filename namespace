@@ -4,6 +4,7 @@ import org.xmlunit.diff.Difference;
 import org.xmlunit.diff.DifferenceEvaluators;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.xml.sax.InputSource;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -26,11 +27,11 @@ public class XmlComparisonSteps {
     public void compareXmlResponsesWithNsTags() throws Exception {
         // Example XML API responses with namespaces inside <DisambiguateResponse>
         String response1 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
-                "<soapenv:Body><ns2:DisambiguateResponse xmlns=\"http://example.com/schema2\" xmlns:ns1=\"http://example.com/schema2\">" +
+                "<soapenv:Body><ns2:DisambiguateResponse xmlns=\"http://example.com/schema2\" xmlns:ns1=\"http://example.com/schema1\">" +
                 "<ns2:name>John</ns2:name><ns2:age>30</ns2:age></ns2:DisambiguateResponse></soapenv:Body></soapenv:Envelope>";
 
         String response2 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
-                "<soapenv:Body><ns1:DisambiguateResponse xmlns=\"http://example.com/schema2\" xmlns:ns2=\"http://example.com/schema2\">" +
+                "<soapenv:Body><ns1:DisambiguateResponse xmlns=\"http://example.com/schema2\" xmlns:ns2=\"http://example.com/schema3\">" +
                 "<ns1:name>John</ns1:name><ns1:age>31</ns1:age></ns1:DisambiguateResponse></soapenv:Body></soapenv:Envelope>";
 
         // Compare XML responses
@@ -54,6 +55,13 @@ public class XmlComparisonSteps {
         Element responseElement1 = extractDisambiguateResponse(doc1);
         Element responseElement2 = extractDisambiguateResponse(doc2);
 
+        // Extract namespaces from both documents
+        Map<String, String> nsMap1 = extractNamespaces(doc1);
+        Map<String, String> nsMap2 = extractNamespaces(doc2);
+
+        // Compare namespaces and generate an HTML diff for namespaces
+        String nsDiffHtml = compareNamespaces(nsMap1, nsMap2);
+
         // Normalize namespaces by URIs (extract dynamically)
         Document normalizedDoc1 = normalizeNamespaces(responseElement1, doc2);
         Document normalizedDoc2 = normalizeNamespaces(responseElement2, doc1);
@@ -71,7 +79,8 @@ public class XmlComparisonSteps {
                                   .build();
 
         // Generate HTML diff report including namespace differences
-        return "<h3>XML Content Differences (Namespaces Normalized)</h3>" + generateHtmlDiff(xmlDiff);
+        return "<h3>Namespace Differences</h3>" + nsDiffHtml +
+               "<h3>XML Content Differences (Namespaces Normalized)</h3>" + generateHtmlDiff(xmlDiff);
     }
 
     // Function to extract the <DisambiguateResponse> element from the XML document
@@ -115,6 +124,36 @@ public class XmlComparisonSteps {
         return namespaceMap;
     }
 
+    // Function to compare namespaces between two XML documents and return HTML diff
+    private String compareNamespaces(Map<String, String> nsMap1, Map<String, String> nsMap2) {
+        StringBuilder nsDiffHtml = new StringBuilder();
+        nsDiffHtml.append("<table border='1' style='border-collapse: collapse;'><thead><tr><th>Prefix</th><th>URI (Response 1)</th><th>URI (Response 2)</th></tr></thead><tbody>");
+
+        // Find namespaces missing in Response 2
+        for (Map.Entry<String, String> entry : nsMap1.entrySet()) {
+            String prefix = entry.getKey();
+            String uri1 = entry.getValue();
+            String uri2 = nsMap2.get(prefix);
+
+            if (uri2 == null) {
+                nsDiffHtml.append("<tr><td>").append(prefix).append("</td><td>").append(uri1).append("</td><td><b style='color:red;'>Missing</b></td></tr>");
+            } else if (!uri1.equals(uri2)) {
+                nsDiffHtml.append("<tr><td>").append(prefix).append("</td><td>").append(uri1).append("</td><td style='color:orange;'>").append(uri2).append("</td></tr>");
+            }
+        }
+
+        // Find namespaces present in Response 2 but missing in Response 1
+        for (Map.Entry<String, String> entry : nsMap2.entrySet()) {
+            String prefix = entry.getKey();
+            if (!nsMap1.containsKey(prefix)) {
+                nsDiffHtml.append("<tr><td>").append(prefix).append("</td><td><b style='color:red;'>Missing</b></td><td>").append(entry.getValue()).append("</td></tr>");
+            }
+        }
+
+        nsDiffHtml.append("</tbody></table>");
+        return nsDiffHtml.toString();
+    }
+
     // Function to normalize namespace prefixes in the document
     private void normalizeNamespacePrefixes(Element element, Map<String, String> targetNsMap) {
         for (int i = 0; i < element.getAttributes().getLength(); i++) {
@@ -148,23 +187,17 @@ public class XmlComparisonSteps {
         Transformer transformer = transformerFactory.newTransformer();
         StringWriter writer = new StringWriter();
         transformer.transform(new DOMSource(element), new StreamResult(writer));
-        return writer.toString();
+        return writer.getBuffer().toString();
     }
 
-    // Function to generate HTML diff report from XML differences
+    // Function to generate HTML report from XMLUnit diff
     private String generateHtmlDiff(Diff xmlDiff) {
-        StringBuilder diffHtml = new StringBuilder();
-        diffHtml.append("<table border='1' style='border-collapse: collapse;'><thead><tr><th>XPath</th><th>Expected</th><th>Actual</th></tr></thead><tbody>");
-
+        StringBuilder html = new StringBuilder();
+        html.append("<ul>");
         for (Difference difference : xmlDiff.getDifferences()) {
-            diffHtml.append("<tr>");
-            diffHtml.append("<td><b>XPath:</b> ").append(difference.getComparison().getControlDetails().getXPath()).append("</td>");
-            diffHtml.append("<td><b>Expected:</b> ").append(difference.getComparison().getControlDetails().getValue()).append("</td>");
-            diffHtml.append("<td><b>Actual:</b> ").append(difference.getComparison().getTestDetails().getValue()).append("</td>");
-            diffHtml.append("</tr>");
+            html.append("<li>").append(difference.toString()).append("</li>");
         }
-
-        diffHtml.append("</tbody></table>");
-        return diffHtml.toString();
+        html.append("</ul>");
+        return html.toString();
     }
 }

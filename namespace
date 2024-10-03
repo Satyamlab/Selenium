@@ -2,10 +2,10 @@ import org.xmlunit.builder.DiffBuilder;
 import org.xmlunit.diff.Diff;
 import org.xmlunit.diff.Difference;
 import org.xmlunit.diff.DifferenceEvaluators;
+import org.xml.sax.InputSource;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
-import org.xml.sax.InputSource;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -206,7 +206,9 @@ public class XmlComparisonSteps {
         StringBuilder html = new StringBuilder();
         html.append("<ul>");
         for (Difference difference : xmlDiff.getDifferences()) {
-            html.append("<li style='color: #ff6666;'>").append(difference.toString()).append("</li>");
+            html.append("<li style='color: #ff6666;'><b>XPath:</b> ").append(difference.getComparison().getControlDetails().getXPath()).append("<br>")
+                .append("<b>Expected:</b> ").append(difference.getComparison().getControlDetails().getValue()).append("<br>")
+                .append("<b>Actual:</b> ").append(difference.getComparison().getTestDetails().getValue()).append("</li>");
         }
         html.append("</ul>");
         return html.toString();

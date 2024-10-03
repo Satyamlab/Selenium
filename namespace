@@ -4,7 +4,6 @@ import org.xmlunit.diff.Difference;
 import org.xmlunit.diff.DifferenceEvaluators;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-import org.w3c.dom.Node;
 import org.xml.sax.InputSource;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -23,27 +22,25 @@ import com.thoughtworks.gauge.messages.Messages;
 
 public class XmlComparisonSteps {
 
-    @Step("Compare XML responses, focusing on namespaces under <ns2:DisambugateResponse>, and highlight differences")
+    @Step("Compare XML responses and highlight differences in namespaces and content")
     public void compareXmlResponsesWithNsTags() throws Exception {
-        // Example XML API responses (SOAP-like) with namespaces inside <ns2:DisambugateResponse>
-        String response1 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
-                "xmlns:ns2=\"http://example.com/schema2\">" +
-                "<soapenv:Body><ns2:DisambugateResponse xmlns=\"http://example.com/schema2\" xmlns:ns1=\"http://example.com/schema2\">" +
-                "<ns2:name>John</ns2:name><ns2:age>30</ns2:age></ns2:DisambugateResponse></soapenv:Body></soapenv:Envelope>";
+        // Example XML API responses with namespaces inside <DisambiguateResponse>
+        String response1 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
+                "<soapenv:Body><ns2:DisambiguateResponse xmlns=\"http://example.com/schema2\" xmlns:ns1=\"http://example.com/schema2\">" +
+                "<ns2:name>John</ns2:name><ns2:age>30</ns2:age></ns2:DisambiguateResponse></soapenv:Body></soapenv:Envelope>";
 
-        String response2 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
-                "xmlns:ns1=\"http://example.com/schema2\">" +
-                "<soapenv:Body><ns1:DisambugateResponse xmlns=\"http://example.com/schema2\" xmlns:ns2=\"http://example.com/schema2\">" +
-                "<ns1:name>John</ns1:name><ns1:age>31</ns1:age></ns1:DisambugateResponse></soapenv:Body></soapenv:Envelope>";
+        String response2 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
+                "<soapenv:Body><ns1:DisambiguateResponse xmlns=\"http://example.com/schema2\" xmlns:ns2=\"http://example.com/schema2\">" +
+                "<ns1:name>John</ns1:name><ns1:age>31</ns1:age></ns1:DisambiguateResponse></soapenv:Body></soapenv:Envelope>";
 
-        // Compare XML responses focusing on the <ns2:DisambugateResponse> element
+        // Compare XML responses
         String diffHtml = compareXmlResponses(response1, response2);
 
         // Embed the differences in the Gauge HTML report
         Messages.writeMessage("<div>" + diffHtml + "</div>");
     }
 
-    // Function to compare XML responses, focusing on the DisambugateResponse element
+    // Function to compare XML responses, focusing on the DisambiguateResponse element
     private String compareXmlResponses(String xml1, String xml2) throws Exception {
         // Parse both XMLs with namespace awareness
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -53,11 +50,11 @@ public class XmlComparisonSteps {
         Document doc1 = builder.parse(new InputSource(new StringReader(xml1)));
         Document doc2 = builder.parse(new InputSource(new StringReader(xml2)));
 
-        // Extract the <DisambugateResponse> elements from both XMLs
-        Element responseElement1 = extractDisambugateResponse(doc1);
-        Element responseElement2 = extractDisambugateResponse(doc2);
+        // Extract the <DisambiguateResponse> elements from both XMLs
+        Element responseElement1 = extractDisambiguateResponse(doc1);
+        Element responseElement2 = extractDisambiguateResponse(doc2);
 
-        // Normalize namespaces by matching URIs
+        // Normalize namespaces by URIs (extract dynamically)
         Document normalizedDoc1 = normalizeNamespaces(responseElement1, doc2);
         Document normalizedDoc2 = normalizeNamespaces(responseElement2, doc1);
 
@@ -77,9 +74,10 @@ public class XmlComparisonSteps {
         return "<h3>XML Content Differences (Namespaces Normalized)</h3>" + generateHtmlDiff(xmlDiff);
     }
 
-    // Function to extract the <DisambugateResponse> element from the XML document
-    private Element extractDisambugateResponse(Document doc) {
-        return (Element) doc.getElementsByTagNameNS("http://example.com/schema2", "DisambugateResponse").item(0);
+    // Function to extract the <DisambiguateResponse> element from the XML document
+    private Element extractDisambiguateResponse(Document doc) {
+        // Find the DisambiguateResponse element by its tag name, which may have any prefix
+        return (Element) doc.getElementsByTagNameNS("*", "DisambiguateResponse").item(0);
     }
 
     // Normalize namespaces in the given element by matching namespaces from the other document
@@ -91,38 +89,23 @@ public class XmlComparisonSteps {
         Document newDoc = builder.newDocument();
 
         // Import the element into the new document
-        Node importedNode = newDoc.importNode(element, true);
-        newDoc.appendChild(importedNode);
+        newDoc.appendChild(newDoc.importNode(element, true));
 
         // Extract namespaces from the target document and match URIs
         Map<String, String> targetNsMap = extractNamespaces(targetDoc);
 
-        // Loop through namespaces in the element and normalize based on URI
-        NamedNodeMap attrs = element.getAttributes();
-        for (int i = 0; i < attrs.getLength(); i++) {
-            Node attr = attrs.item(i);
-            if (attr.getNodeName().startsWith("xmlns:")) {
-                String uri = attr.getNodeValue();
-                String prefix = attr.getNodeName().substring(6); // Get the prefix
+        // Normalize namespaces based on URIs
+        normalizeNamespacePrefixes(newDoc.getDocumentElement(), targetNsMap);
 
-                // Find corresponding prefix in the target document
-                String targetPrefix = getPrefixByUri(targetNsMap, uri);
-                if (targetPrefix != null) {
-                    // Replace prefix in the new document
-                    newDoc.getDocumentElement().setAttribute("xmlns:" + targetPrefix, uri);
-                }
-            }
-        }
         return newDoc;
     }
 
     // Function to extract namespaces from the document (prefix -> URI map)
     private Map<String, String> extractNamespaces(Document doc) {
         Map<String, String> namespaceMap = new HashMap<>();
-        NamedNodeMap attributes = doc.getDocumentElement().getAttributes();
-
-        for (int i = 0; i < attributes.getLength(); i++) {
-            Node attr = attributes.item(i);
+        Element root = doc.getDocumentElement();
+        for (int i = 0; i < root.getAttributes().getLength(); i++) {
+            Node attr = root.getAttributes().item(i);
             if (attr.getNodeName().startsWith("xmlns:")) {
                 String prefix = attr.getNodeName().substring(6);
                 String uri = attr.getNodeValue();
@@ -130,6 +113,23 @@ public class XmlComparisonSteps {
             }
         }
         return namespaceMap;
+    }
+
+    // Function to normalize namespace prefixes in the document
+    private void normalizeNamespacePrefixes(Element element, Map<String, String> targetNsMap) {
+        for (int i = 0; i < element.getAttributes().getLength(); i++) {
+            Node attr = element.getAttributes().item(i);
+            if (attr.getNodeName().startsWith("xmlns:")) {
+                String prefix = attr.getNodeName().substring(6);
+                String uri = attr.getNodeValue();
+
+                // If the URI matches one from the target document, normalize the prefix
+                String targetPrefix = getPrefixByUri(targetNsMap, uri);
+                if (targetPrefix != null && !targetPrefix.equals(prefix)) {
+                    element.setAttribute("xmlns:" + targetPrefix, uri);
+                }
+            }
+        }
     }
 
     // Function to get the prefix for a given URI from the namespace map

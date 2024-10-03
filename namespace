@@ -78,9 +78,11 @@ public class XmlComparisonSteps {
                                   .ignoreWhitespace() // Ignore whitespace differences
                                   .build();
 
-        // Generate HTML diff report including namespace differences
-        return "<h3>Namespace Differences</h3>" + nsDiffHtml +
-               "<h3>XML Content Differences (Namespaces Normalized)</h3>" + generateHtmlDiff(xmlDiff);
+        // Generate enhanced HTML diff report including namespace and XML content differences
+        return "<h2>XML Comparison Report</h2>" +
+               "<h3>Summary of Differences</h3>" + generateSummary(nsMap1, nsMap2, xmlDiff) +
+               "<h3>Namespace Differences</h3>" + nsDiffHtml +
+               "<h3>XML Content Differences</h3>" + generateHtmlDiff(xmlDiff);
     }
 
     // Function to extract the <DisambiguateResponse> element from the XML document
@@ -127,7 +129,7 @@ public class XmlComparisonSteps {
     // Function to compare namespaces between two XML documents and return HTML diff
     private String compareNamespaces(Map<String, String> nsMap1, Map<String, String> nsMap2) {
         StringBuilder nsDiffHtml = new StringBuilder();
-        nsDiffHtml.append("<table border='1' style='border-collapse: collapse;'><thead><tr><th>Prefix</th><th>URI (Response 1)</th><th>URI (Response 2)</th></tr></thead><tbody>");
+        nsDiffHtml.append("<table border='1' style='border-collapse: collapse; width:100%;'><thead><tr><th>Prefix</th><th>URI (Response 1)</th><th>URI (Response 2)</th></tr></thead><tbody>");
 
         // Find namespaces missing in Response 2
         for (Map.Entry<String, String> entry : nsMap1.entrySet()) {
@@ -136,9 +138,9 @@ public class XmlComparisonSteps {
             String uri2 = nsMap2.get(prefix);
 
             if (uri2 == null) {
-                nsDiffHtml.append("<tr><td>").append(prefix).append("</td><td>").append(uri1).append("</td><td><b style='color:red;'>Missing</b></td></tr>");
+                nsDiffHtml.append("<tr style='background-color: #ffcccc;'><td>").append(prefix).append("</td><td>").append(uri1).append("</td><td><b>Missing</b></td></tr>");
             } else if (!uri1.equals(uri2)) {
-                nsDiffHtml.append("<tr><td>").append(prefix).append("</td><td>").append(uri1).append("</td><td style='color:orange;'>").append(uri2).append("</td></tr>");
+                nsDiffHtml.append("<tr style='background-color: #ffeb99;'><td>").append(prefix).append("</td><td>").append(uri1).append("</td><td>").append(uri2).append("</td></tr>");
             }
         }
 
@@ -146,7 +148,7 @@ public class XmlComparisonSteps {
         for (Map.Entry<String, String> entry : nsMap2.entrySet()) {
             String prefix = entry.getKey();
             if (!nsMap1.containsKey(prefix)) {
-                nsDiffHtml.append("<tr><td>").append(prefix).append("</td><td><b style='color:red;'>Missing</b></td><td>").append(entry.getValue()).append("</td></tr>");
+                nsDiffHtml.append("<tr style='background-color: #ffcccc;'><td>").append(prefix).append("</td><td><b>Missing</b></td><td>").append(entry.getValue()).append("</td></tr>");
             }
         }
 
@@ -181,7 +183,16 @@ public class XmlComparisonSteps {
         return null;
     }
 
-    // Convert XML element back to string for comparison
+    // Function to generate a summary of differences for the report
+    private String generateSummary(Map<String, String> nsMap1, Map<String, String> nsMap2, Diff xmlDiff) {
+        StringBuilder summary = new StringBuilder();
+        summary.append("<p><strong>Namespaces in Response 1:</strong> ").append(nsMap1.size()).append("</p>");
+        summary.append("<p><strong>Namespaces in Response 2:</strong> ").append(nsMap2.size()).append("</p>");
+        summary.append("<p><strong>Content Differences:</strong> ").append(xmlDiff.hasDifferences() ? "Yes" : "No").append("</p>");
+        return summary.toString();
+    }
+
+    // Helper function to convert an element back to a string
     private String elementToString(Element element) throws Exception {
         TransformerFactory transformerFactory = TransformerFactory.newInstance();
         Transformer transformer = transformerFactory.newTransformer();
@@ -195,7 +206,7 @@ public class XmlComparisonSteps {
         StringBuilder html = new StringBuilder();
         html.append("<ul>");
         for (Difference difference : xmlDiff.getDifferences()) {
-            html.append("<li>").append(difference.toString()).append("</li>");
+            html.append("<li style='color: #ff6666;'>").append(difference.toString()).append("</li>");
         }
         html.append("</ul>");
         return html.toString();

@@ -3,7 +3,7 @@ import org.xmlunit.diff.Diff;
 import org.xmlunit.diff.Difference;
 import org.xmlunit.diff.DifferenceEvaluators;
 import org.w3c.dom.Document;
-import org.w3c.dom.NamedNodeMap;
+import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.xml.sax.InputSource;
 
@@ -16,36 +16,34 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
-import java.util.Set;
 
 import com.thoughtworks.gauge.Step;
 import com.thoughtworks.gauge.messages.Messages;
 
 public class XmlComparisonSteps {
 
-    @Step("Compare XML responses, validate tags with namespaces, and highlight differences")
-    public void compareXmlResponsesAndValidateTagsWithNamespaces() throws Exception {
-        // Example XML API responses (SOAP-like) with namespaces
+    @Step("Compare XML responses, focusing on namespaces under <ns2:DisambugateResponse>, and highlight differences")
+    public void compareXmlResponsesWithNsTags() throws Exception {
+        // Example XML API responses (SOAP-like) with namespaces inside <ns2:DisambugateResponse>
         String response1 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
-                "xmlns:ns1=\"http://example.com/schema1\" xmlns:ns2=\"http://example.com/schema2\">" +
-                "<soapenv:Body><ns1:response><ns1:name>John</ns1:name><ns1:age>30</ns1:age><ns2:address>USA</ns2:address></ns1:response>" +
-                "</soapenv:Body></soapenv:Envelope>";
+                "xmlns:ns2=\"http://example.com/schema2\">" +
+                "<soapenv:Body><ns2:DisambugateResponse xmlns=\"http://example.com/schema2\" xmlns:ns1=\"http://example.com/schema2\">" +
+                "<ns2:name>John</ns2:name><ns2:age>30</ns2:age></ns2:DisambugateResponse></soapenv:Body></soapenv:Envelope>";
 
         String response2 = "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" " +
-                "xmlns:ns2=\"http://example.com/schema1\" xmlns:ns1=\"http://example.com/schema2\">" +
-                "<soapenv:Body><ns2:response><ns2:name>John</ns2:name><ns2:age>31</ns2:age><ns1:address>USA</ns1:address></ns2:response>" +
-                "</soapenv:Body></soapenv:Envelope>";
+                "xmlns:ns1=\"http://example.com/schema2\">" +
+                "<soapenv:Body><ns1:DisambugateResponse xmlns=\"http://example.com/schema2\" xmlns:ns2=\"http://example.com/schema2\">" +
+                "<ns1:name>John</ns1:name><ns1:age>31</ns1:age></ns1:DisambugateResponse></soapenv:Body></soapenv:Envelope>";
 
-        // Compare XML responses after normalizing the namespaces by matching URLs
+        // Compare XML responses focusing on the <ns2:DisambugateResponse> element
         String diffHtml = compareXmlResponses(response1, response2);
 
         // Embed the differences in the Gauge HTML report
         Messages.writeMessage("<div>" + diffHtml + "</div>");
     }
 
-    // Function to compare XML responses after matching namespaces by URI and validating tags
+    // Function to compare XML responses, focusing on the DisambugateResponse element
     private String compareXmlResponses(String xml1, String xml2) throws Exception {
         // Parse both XMLs with namespace awareness
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -55,19 +53,17 @@ public class XmlComparisonSteps {
         Document doc1 = builder.parse(new InputSource(new StringReader(xml1)));
         Document doc2 = builder.parse(new InputSource(new StringReader(xml2)));
 
-        // Normalize namespaces by matching based on URI
-        Document normalizedDoc1 = normalizeNamespacesByUri(doc1, doc2);
-        Document normalizedDoc2 = normalizeNamespacesByUri(doc2, doc1);
+        // Extract the <DisambugateResponse> elements from both XMLs
+        Element responseElement1 = extractDisambugateResponse(doc1);
+        Element responseElement2 = extractDisambugateResponse(doc2);
 
-        // Validate that tags with namespaces match between the two XML documents
-        String tagValidationResult = validateMatchingNamespaceTags(normalizedDoc1, normalizedDoc2);
-        if (!tagValidationResult.isEmpty()) {
-            return "<h3>Namespace Tag Mismatches:</h3>" + tagValidationResult; // Early return if tags don't match
-        }
+        // Normalize namespaces by matching URIs
+        Document normalizedDoc1 = normalizeNamespaces(responseElement1, doc2);
+        Document normalizedDoc2 = normalizeNamespaces(responseElement2, doc1);
 
-        // Convert documents back to strings for content comparison
-        String normalizedXml1 = documentToString(normalizedDoc1);
-        String normalizedXml2 = documentToString(normalizedDoc2);
+        // Convert documents back to strings for comparison
+        String normalizedXml1 = elementToString(normalizedDoc1.getDocumentElement());
+        String normalizedXml2 = elementToString(normalizedDoc2.getDocumentElement());
 
         // Compare the two normalized XML documents
         Diff xmlDiff = DiffBuilder.compare(normalizedXml1)
@@ -78,76 +74,49 @@ public class XmlComparisonSteps {
                                   .build();
 
         // Generate HTML diff report including namespace differences
-        return "<h3>XML Content Differences</h3>" + generateHtmlDiff(xmlDiff);
+        return "<h3>XML Content Differences (Namespaces Normalized)</h3>" + generateHtmlDiff(xmlDiff);
     }
 
-    // Function to normalize namespaces in the XML document by matching the URIs
-    private Document normalizeNamespacesByUri(Document sourceDoc, Document targetDoc) {
-        // Extract namespaces from both documents
-        Map<String, String> sourceNsMap = extractNamespaces(sourceDoc);
+    // Function to extract the <DisambugateResponse> element from the XML document
+    private Element extractDisambugateResponse(Document doc) {
+        return (Element) doc.getElementsByTagNameNS("http://example.com/schema2", "DisambugateResponse").item(0);
+    }
+
+    // Normalize namespaces in the given element by matching namespaces from the other document
+    private Document normalizeNamespaces(Element element, Document targetDoc) throws Exception {
+        // Create a new empty document
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        Document newDoc = builder.newDocument();
+
+        // Import the element into the new document
+        Node importedNode = newDoc.importNode(element, true);
+        newDoc.appendChild(importedNode);
+
+        // Extract namespaces from the target document and match URIs
         Map<String, String> targetNsMap = extractNamespaces(targetDoc);
 
-        // Create a new map to store the matched namespaces (by URI)
-        Map<String, String> nsUriToPrefixMap = new HashMap<>();
+        // Loop through namespaces in the element and normalize based on URI
+        NamedNodeMap attrs = element.getAttributes();
+        for (int i = 0; i < attrs.getLength(); i++) {
+            Node attr = attrs.item(i);
+            if (attr.getNodeName().startsWith("xmlns:")) {
+                String uri = attr.getNodeValue();
+                String prefix = attr.getNodeName().substring(6); // Get the prefix
 
-        // Match namespaces by URI
-        for (Map.Entry<String, String> sourceEntry : sourceNsMap.entrySet()) {
-            String sourceUri = sourceEntry.getValue();
-            String targetPrefix = getPrefixByUri(targetNsMap, sourceUri);
-            if (targetPrefix != null) {
-                nsUriToPrefixMap.put(sourceUri, targetPrefix);
+                // Find corresponding prefix in the target document
+                String targetPrefix = getPrefixByUri(targetNsMap, uri);
+                if (targetPrefix != null) {
+                    // Replace prefix in the new document
+                    newDoc.getDocumentElement().setAttribute("xmlns:" + targetPrefix, uri);
+                }
             }
         }
-
-        // Apply matched namespaces to the source document
-        Set<Map.Entry<String, String>> nsUriEntries = nsUriToPrefixMap.entrySet();
-        for (Map.Entry<String, String> entry : nsUriEntries) {
-            String uri = entry.getKey();
-            String targetPrefix = entry.getValue();
-            sourceDoc.getDocumentElement().setAttribute("xmlns:" + targetPrefix, uri);
-        }
-
-        return sourceDoc;
+        return newDoc;
     }
 
-    // Function to validate if XML tags in one document match the corresponding tags in the other document
-    private String validateMatchingNamespaceTags(Document doc1, Document doc2) {
-        Map<String, String> nsMap1 = extractNamespaces(doc1);
-        Map<String, String> nsMap2 = extractNamespaces(doc2);
-
-        StringBuilder validationResult = new StringBuilder();
-
-        // Check if every namespace tag in doc1 has a corresponding tag in doc2
-        for (Map.Entry<String, String> entry : nsMap1.entrySet()) {
-            String uri1 = entry.getValue();
-            if (!nsMap2.containsValue(uri1)) {
-                validationResult.append("<tr><td>").append(entry.getKey())
-                        .append("</td><td>").append(uri1)
-                        .append("</td><td>").append("Missing in API2")
-                        .append("</td></tr>");
-            }
-        }
-
-        // Check if every namespace tag in doc2 has a corresponding tag in doc1
-        for (Map.Entry<String, String> entry : nsMap2.entrySet()) {
-            String uri2 = entry.getValue();
-            if (!nsMap1.containsValue(uri2)) {
-                validationResult.append("<tr><td>").append(entry.getKey())
-                        .append("</td><td>").append(uri2)
-                        .append("</td><td>").append("Missing in API1")
-                        .append("</td></tr>");
-            }
-        }
-
-        if (validationResult.length() > 0) {
-            return "<table border='1'><thead><tr><th>Namespace</th><th>URI</th><th>Status</th></tr></thead><tbody>"
-                    + validationResult.toString() + "</tbody></table>";
-        }
-
-        return "";
-    }
-
-    // Function to extract namespaces (prefix -> URI) from a document
+    // Function to extract namespaces from the document (prefix -> URI map)
     private Map<String, String> extractNamespaces(Document doc) {
         Map<String, String> namespaceMap = new HashMap<>();
         NamedNodeMap attributes = doc.getDocumentElement().getAttributes();
@@ -155,8 +124,8 @@ public class XmlComparisonSteps {
         for (int i = 0; i < attributes.getLength(); i++) {
             Node attr = attributes.item(i);
             if (attr.getNodeName().startsWith("xmlns:")) {
-                String prefix = attr.getNodeName().substring(6); // Get the prefix
-                String uri = attr.getNodeValue(); // Get the namespace URI
+                String prefix = attr.getNodeName().substring(6);
+                String uri = attr.getNodeValue();
                 namespaceMap.put(prefix, uri);
             }
         }
@@ -173,12 +142,12 @@ public class XmlComparisonSteps {
         return null;
     }
 
-    // Convert XML Document back to string
-    private String documentToString(Document doc) throws Exception {
+    // Convert XML element back to string for comparison
+    private String elementToString(Element element) throws Exception {
         TransformerFactory transformerFactory = TransformerFactory.newInstance();
         Transformer transformer = transformerFactory.newTransformer();
         StringWriter writer = new StringWriter();
-        transformer.transform(new DOMSource(doc), new StreamResult(writer));
+        transformer.transform(new DOMSource(element), new StreamResult(writer));
         return writer.toString();
     }
 
@@ -187,9 +156,7 @@ public class XmlComparisonSteps {
         StringBuilder diffHtml = new StringBuilder();
         diffHtml.append("<table border='1' style='border-collapse: collapse;'><thead><tr><th>XPath</th><th>Expected</th><th>Actual</th></tr></thead><tbody>");
 
-        Iterator<Difference> differences = xmlDiff.getDifferences().iterator();
-        while (differences.hasNext()) {
-            Difference difference = differences.next();
+        for (Difference difference : xmlDiff.getDifferences()) {
             diffHtml.append("<tr>");
             diffHtml.append("<td><b>XPath:</b> ").append(difference.getComparison().getControlDetails().getXPath()).append("</td>");
             diffHtml.append("<td><b>Expected:</b> ").append(difference.getComparison().getControlDetails().getValue()).append("</td>");

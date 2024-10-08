@@ -129,4 +129,7 @@ if __name__ == "__main__":
 
     # After creating the template, prompt the user to populate it and upload test cases.
     user_input = input("Do you want to upload test cases now? (yes/no): ").strip().lower()
-    if use
+    if user_input == "yes":
+        upload_test_cases(file_name)
+    else:
+        print("Please populate the template and run the upload function later.")

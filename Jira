@@ -1,140 +1,142 @@
-import openpyxl
 import os
-import requests
-from requests.auth import HTTPBasicAuth
+import openpyxl
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
+import requests
 
-# Jira API configurations
-JIRA_URL = "https://your-domain.atlassian.net/rest/api/3/issue"
-USERNAME = "your-email@example.com"  # Your Jira account email
-API_TOKEN = "your-api-token"          # Your Jira API token
-PROJECT_KEY = "YOUR_PROJECT_KEY"      # e.g., "TEST"
-
+# Jira and Zephyr Squad configurations
+JIRA_URL = "https://your-jira-instance.com/rest/api/2/issue"
+ZEPHYR_URL = "https://your-jira-instance.com/rest/zapi/latest/"
+AUTH_TOKEN = "your_auth_token"
 HEADERS = {
-    "Authorization": f"Basic {requests.auth._basic_auth_str(USERNAME, API_TOKEN)}",
+    "Authorization": f"Bearer {AUTH_TOKEN}",
     "Content-Type": "application/json"
 }
 
-# Function to fetch dropdown values from Jira
-def fetch_dropdown_values(field_id):
-    print(f"Fetching dropdown values for field ID: {field_id}...")
-    options_url = f"https://your-domain.atlassian.net/rest/api/3/field/{field_id}/option"
+TEMPLATE_FILE = 'Jira_Test_Cases_Template.xlsx'
+
+def fetch_dropdown_values(field_name):
+    # Function to fetch dropdown values from Jira (for columns like Priority)
+    url = f"{JIRA_URL}/field"
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
     
-    try:
-        response = requests.get(options_url, auth=HTTPBasicAuth(USERNAME, API_TOKEN))
-        response.raise_for_status()  # Raise an error for bad responses
-        options = response.json().get('options', [])
-        values = [option['value'] for option in options]
-        print(f"Dropdown values fetched: {values}")
-        return values  
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching options for field '{field_id}': {e}")
-        return []
+    fields = response.json()
+    for field in fields:
+        if field["id"] == field_name:
+            return [option['value'] for option in field['allowedValues']]
+    return []
 
-# Function to create the Excel template
-def create_template(file_name):
-    if os.path.exists(file_name):
-        print(f"Template '{file_name}' already exists. Skipping creation.")
-        return
-
-    print(f"Creating template '{file_name}'...")
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Test Cases"
-
-    # Define mandatory columns
-    headers = ["Summary", "Description", "Test Steps", "Expected Result", "Priority"]
-
-    # Write headers to the first row
-    ws.append(headers)
-
-    # Fetch dropdown values for Priority (example field ID, replace with actual)
-    priority_options = fetch_dropdown_values("customfield_10001")  # Example field ID
-
-    # Add dropdown for the Priority column
-    if priority_options:
-        dv = DataValidation(type="list", formula1=f'"{",".join(priority_options)}"', showDropDown=True)
-        ws.add_data_validation(dv)
-
-        # Apply the data validation to the Priority column (5th column)
-        for row in range(2, 102):  # Allow 100 rows for test cases
-            cell = f"E{row}"
-            dv.add(ws[cell])
-
-    # Save the template
-    try:
-        wb.save(file_name)
-        print(f"Template '{file_name}' created successfully.")
-    except Exception as e:
-        print(f"Error saving template '{file_name}': {e}")
-
-# Function to upload test cases to Jira
-def upload_test_cases(file_name):
-    if not os.path.exists(file_name):
-        print(f"Template '{file_name}' does not exist. Please create it first.")
-        return
-
-    # Load test cases only if the template file exists
-    print(f"Loading test cases from '{file_name}'...")
-    try:
-        wb = openpyxl.load_workbook(file_name)
+def create_template():
+    """Create an Excel template for Jira test cases."""
+    if not os.path.exists(TEMPLATE_FILE):
+        wb = openpyxl.Workbook()
         ws = wb.active
-    except Exception as e:
-        print(f"Error loading the workbook '{file_name}': {e}")
+        ws.title = "Test Cases"
+
+        # Define columns
+        columns = ["Test Case Summary", "Test Step", "Priority"]
+
+        # Write header
+        for i, col in enumerate(columns, 1):
+            ws.cell(row=1, column=i, value=col)
+
+        # Add dropdown for Priority
+        priority_options = fetch_dropdown_values("priority")
+        if priority_options:
+            dv = DataValidation(type="list", formula1=f'"{",".join(priority_options)}"', showDropDown=True)
+            ws.add_data_validation(dv)
+            for row in range(2, 100):  # Assuming maximum of 100 test cases
+                dv.add(ws[f'C{row}'])  # Priority is in column C
+
+        # Save the file
+        wb.save(TEMPLATE_FILE)
+        print(f"Template created: {TEMPLATE_FILE}")
+    else:
+        print("Template already exists. Ready for upload.")
+
+def read_excel_and_upload():
+    """Read the Excel file and upload test cases to Jira."""
+    if not os.path.exists(TEMPLATE_FILE):
+        print(f"Template file '{TEMPLATE_FILE}' not found. Please create it first.")
         return
 
-    # Check if there are any valid test cases to upload
-    valid_cases = []
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if any(cell is not None for cell in row):
-            valid_cases.append(row)
+    wb = openpyxl.load_workbook(TEMPLATE_FILE)
+    ws = wb.active
 
-    if not valid_cases:
+    previous_summary = None
+    test_cases_to_upload = []
+
+    # Collect test case details
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, values_only=True):
+        summary, step, priority = row
+        if summary:
+            # Detect change in Test Case Summary
+            if summary != previous_summary:
+                test_case_data = {
+                    "summary": summary,
+                    "steps": [],
+                    "priority": priority
+                }
+                test_cases_to_upload.append(test_case_data)
+                previous_summary = summary
+
+            # Add step to the latest test case
+            if test_cases_to_upload:
+                test_cases_to_upload[-1]['steps'].append(step)
+
+    if test_cases_to_upload:
+        confirm = input(f"Found {len(test_cases_to_upload)} test cases. Do you want to upload them? (yes/no): ")
+        if confirm.lower() == 'yes':
+            for test_case in test_cases_to_upload:
+                upload_to_jira(test_case)
+        else:
+            print("Upload canceled.")
+    else:
         print("No valid test cases found for upload. Please populate the template.")
-        return
 
-    print("Starting to upload test cases...")
-    for row in valid_cases:
-        summary, description, test_steps, expected_result, priority = row
-        
-        # Basic validation for required fields
-        if not summary or not description:
-            print(f"Skipping test case due to missing summary or description: {row}")
-            continue
-
-        print(f"Uploading: Summary='{summary}', Description='{description}'")
-
-        json_payload = {
-            "fields": {
-                "project": {
-                    "key": PROJECT_KEY
-                },
-                "summary": summary,
-                "description": description,
-                "issuetype": {
-                    "name": "Test Case"
-                },
-                "customfield_10001": priority  # Replace with actual custom field ID for Priority
+def upload_to_jira(test_case):
+    """Upload test case and steps to Jira using Zephyr Squad."""
+    issue_data = {
+        "fields": {
+            "project": {
+                "key": "YOUR_PROJECT_KEY"
+            },
+            "summary": test_case['summary'],
+            "priority": {"name": test_case['priority']},
+            "issuetype": {
+                "name": "Test"  # Assuming "Test" is the issue type
             }
         }
+    }
 
-        try:
-            response = requests.post(JIRA_URL, json=json_payload, auth=HTTPBasicAuth(USERNAME, API_TOKEN))
-            response.raise_for_status()  # Raise an error for bad responses
-            print(f"Test case '{summary}' uploaded successfully!")
-        except requests.exceptions.RequestException as e:
-            print(f"Error uploading test case '{summary}': {e}")
+    response = requests.post(JIRA_URL, headers=HEADERS, json=issue_data)
+    if response.status_code == 201:
+        issue_key = response.json()['key']
+        print(f"Test case '{test_case['summary']}' created with issue key: {issue_key}")
 
-# Main execution flow
-if __name__ == "__main__":
-    file_name = "Jira_Test_Cases_Template.xlsx"
-
-    # Create the Excel template if it does not exist
-    create_template(file_name)
-
-    # After creating the template, prompt the user to populate it and upload test cases.
-    user_input = input("Do you want to upload test cases now? (yes/no): ").strip().lower()
-    if user_input == "yes":
-        upload_test_cases(file_name)
+        # Upload steps to Zephyr (for the newly created test case)
+        for step in test_case['steps']:
+            step_data = {
+                "step": step,
+                "issueId": issue_key
+            }
+            response = requests.post(f"{ZEPHYR_URL}/teststep/{issue_key}", headers=HEADERS, json=step_data)
+            if response.status_code == 200:
+                print(f"Step '{step}' added to test case {issue_key}")
+            else:
+                print(f"Failed to add step '{step}' to test case {issue_key}")
     else:
-        print("Please populate the template and run the upload function later.")
+        print(f"Failed to create test case '{test_case['summary']}'")
+
+
+def main():
+    if os.path.exists(TEMPLATE_FILE):
+        print(f"Loading test cases from '{TEMPLATE_FILE}'...")
+        read_excel_and_upload()
+    else:
+        print("Template not found. Creating template...")
+        create_template()
+
+if __name__ == "__main__":
+    main()

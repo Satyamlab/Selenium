@@ -5,9 +5,10 @@ from openpyxl.worksheet.datavalidation import DataValidation
 import requests
 
 # Jira and Zephyr Squad configurations
-JIRA_URL = "https://your-jira-instance.com/rest/api/2/issue"
+JIRA_URL = "https://your-jira-instance.com/rest/api/2/"
 ZEPHYR_URL = "https://your-jira-instance.com/rest/zapi/latest/"
 AUTH_TOKEN = "your_auth_token"
+PROJECT_KEY = "YOUR_PROJECT_KEY"
 HEADERS = {
     "Authorization": f"Bearer {AUTH_TOKEN}",
     "Content-Type": "application/json"
@@ -15,16 +16,18 @@ HEADERS = {
 
 TEMPLATE_FILE = 'Jira_Test_Cases_Template.xlsx'
 
-def fetch_dropdown_values(field_name):
-    # Function to fetch dropdown values from Jira (for columns like Priority)
-    url = f"{JIRA_URL}/field"
+def fetch_project_specific_dropdown_values(field_name, project_key):
+    """Fetch dropdown values for a specific field in the specified Jira project."""
+    url = f"{JIRA_URL}issue/createmeta?projectKeys={project_key}&expand=projects.issuetypes.fields"
     response = requests.get(url, headers=HEADERS)
     response.raise_for_status()
-    
-    fields = response.json()
-    for field in fields:
-        if field["id"] == field_name:
-            return [option['value'] for option in field['allowedValues']]
+
+    project_meta = response.json()
+    fields = project_meta['projects'][0]['issuetypes'][0]['fields']  # Assuming first issue type is 'Test'
+
+    if field_name in fields:
+        allowed_values = fields[field_name].get('allowedValues', [])
+        return [option['name'] for option in allowed_values]
     return []
 
 def create_template():
@@ -41,8 +44,8 @@ def create_template():
         for i, col in enumerate(columns, 1):
             ws.cell(row=1, column=i, value=col)
 
-        # Add dropdown for Priority
-        priority_options = fetch_dropdown_values("priority")
+        # Add dropdown for Priority for the specific project
+        priority_options = fetch_project_specific_dropdown_values("priority", PROJECT_KEY)
         if priority_options:
             dv = DataValidation(type="list", formula1=f'"{",".join(priority_options)}"', showDropDown=True)
             ws.add_data_validation(dv)
@@ -100,7 +103,7 @@ def upload_to_jira(test_case):
     issue_data = {
         "fields": {
             "project": {
-                "key": "YOUR_PROJECT_KEY"
+                "key": PROJECT_KEY
             },
             "summary": test_case['summary'],
             "priority": {"name": test_case['priority']},
@@ -110,7 +113,7 @@ def upload_to_jira(test_case):
         }
     }
 
-    response = requests.post(JIRA_URL, headers=HEADERS, json=issue_data)
+    response = requests.post(f"{JIRA_URL}issue", headers=HEADERS, json=issue_data)
     if response.status_code == 201:
         issue_key = response.json()['key']
         print(f"Test case '{test_case['summary']}' created with issue key: {issue_key}")
@@ -128,7 +131,6 @@ def upload_to_jira(test_case):
                 print(f"Failed to add step '{step}' to test case {issue_key}")
     else:
         print(f"Failed to create test case '{test_case['summary']}'")
-
 
 def main():
     if os.path.exists(TEMPLATE_FILE):

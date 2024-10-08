@@ -14,15 +14,16 @@ PROJECT_KEY = "YOUR_PROJECT_KEY"      # e.g., "TEST"
 def fetch_dropdown_values(field_id):
     print(f"Fetching dropdown values for field ID: {field_id}...")
     options_url = f"https://your-domain.atlassian.net/rest/api/3/field/{field_id}/option"
-    response = requests.get(options_url, auth=HTTPBasicAuth(USERNAME, API_TOKEN))
     
-    if response.status_code == 200:
+    try:
+        response = requests.get(options_url, auth=HTTPBasicAuth(USERNAME, API_TOKEN))
+        response.raise_for_status()  # Raise an error for bad responses
         options = response.json().get('options', [])
         values = [option['value'] for option in options]
         print(f"Dropdown values fetched: {values}")
         return values  
-    else:
-        print(f"Failed to fetch options for field '{field_id}': {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching options for field '{field_id}': {e}")
         return []
 
 # Function to create the Excel template
@@ -56,8 +57,11 @@ def create_template(file_name):
             dv.add(ws[cell])
 
     # Save the template
-    wb.save(file_name)
-    print(f"Template '{file_name}' created successfully.")
+    try:
+        wb.save(file_name)
+        print(f"Template '{file_name}' created successfully.")
+    except Exception as e:
+        print(f"Error saving template '{file_name}': {e}")
 
 # Function to upload test cases to Jira
 def upload_test_cases(file_name):
@@ -67,8 +71,12 @@ def upload_test_cases(file_name):
 
     # Load test cases only if the template file exists
     print(f"Loading test cases from '{file_name}'...")
-    wb = openpyxl.load_workbook(file_name)
-    ws = wb.active
+    try:
+        wb = openpyxl.load_workbook(file_name)
+        ws = wb.active
+    except Exception as e:
+        print(f"Error loading the workbook '{file_name}': {e}")
+        return
 
     # Check if there are any valid test cases to upload
     valid_cases = []
@@ -83,6 +91,11 @@ def upload_test_cases(file_name):
     print("Starting to upload test cases...")
     for row in valid_cases:
         summary, description, test_steps, expected_result, priority = row
+        
+        # Basic validation for required fields
+        if not summary or not description:
+            print(f"Skipping test case due to missing summary or description: {row}")
+            continue
 
         print(f"Uploading: Summary='{summary}', Description='{description}'")
 
@@ -100,12 +113,12 @@ def upload_test_cases(file_name):
             }
         }
 
-        response = requests.post(JIRA_URL, json=json_payload, auth=HTTPBasicAuth(USERNAME, API_TOKEN))
-
-        if response.status_code == 201:
+        try:
+            response = requests.post(JIRA_URL, json=json_payload, auth=HTTPBasicAuth(USERNAME, API_TOKEN))
+            response.raise_for_status()  # Raise an error for bad responses
             print(f"Test case '{summary}' uploaded successfully!")
-        else:
-            print(f"Error uploading test case '{summary}': {response.status_code} {response.text}")
+        except requests.exceptions.RequestException as e:
+            print(f"Error uploading test case '{summary}': {e}")
 
 # Main execution flow
 if __name__ == "__main__":
@@ -116,7 +129,4 @@ if __name__ == "__main__":
 
     # After creating the template, prompt the user to populate it and upload test cases.
     user_input = input("Do you want to upload test cases now? (yes/no): ").strip().lower()
-    if user_input == "yes":
-        upload_test_cases(file_name)
-    else:
-        print("Please populate the template and run the upload function later.")
+    if use

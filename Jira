@@ -10,6 +10,11 @@ USERNAME = "your-email@example.com"  # Your Jira account email
 API_TOKEN = "your-api-token"          # Your Jira API token
 PROJECT_KEY = "YOUR_PROJECT_KEY"      # e.g., "TEST"
 
+HEADERS = {
+    "Authorization": f"Basic {requests.auth._basic_auth_str(USERNAME, API_TOKEN)}",
+    "Content-Type": "application/json"
+}
+
 # Function to fetch dropdown values from Jira
 def fetch_dropdown_values(field_id):
     print(f"Fetching dropdown values for field ID: {field_id}...")

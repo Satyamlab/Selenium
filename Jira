@@ -1,144 +1,137 @@
-import os
 import openpyxl
-from openpyxl.utils import get_column_letter
+from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 import requests
+import json
+import os
 
-# Jira and Zephyr Squad configurations
-JIRA_URL = "https://your-jira-instance.com/rest/api/2/"
-ZEPHYR_URL = "https://your-jira-instance.com/rest/zapi/latest/"
-AUTH_TOKEN = "your_auth_token"
-PROJECT_KEY = "YOUR_PROJECT_KEY"
+# Jira and Zephyr API details
+JIRA_BASE_URL = "https://your-jira-instance.atlassian.net"
+ZEPHYR_BASE_URL = "https://your-zephyr-instance"
+API_TOKEN = "your_api_token"
+USERNAME = "your_jira_email"
+PROJECT_KEY = "your_project_key"
+
 HEADERS = {
-    "Authorization": f"Bearer {AUTH_TOKEN}",
+    "Authorization": f"Bearer {API_TOKEN}",
     "Content-Type": "application/json"
 }
 
-TEMPLATE_FILE = 'Jira_Test_Cases_Template.xlsx'
-
-def fetch_project_specific_dropdown_values(field_name, project_key):
-    """Fetch dropdown values for a specific field in the specified Jira project."""
-    url = f"{JIRA_URL}issue/createmeta?projectKeys={project_key}&expand=projects.issuetypes.fields"
+def fetch_dropdown_values(field_key):
+    """Fetch dropdown values from Jira based on the field ID."""
+    url = f"{JIRA_BASE_URL}/rest/api/3/field/{field_key}/context/projectmapping"
     response = requests.get(url, headers=HEADERS)
-    response.raise_for_status()
-
-    project_meta = response.json()
-    fields = project_meta['projects'][0]['issuetypes'][0]['fields']  # Assuming first issue type is 'Test'
-
-    if field_name in fields:
-        allowed_values = fields[field_name].get('allowedValues', [])
-        return [option['name'] for option in allowed_values]
+    if response.status_code == 200:
+        field_data = response.json()
+        return [item['value'] for item in field_data['allowedValues']]  # Adjust this based on the field structure
     return []
 
-def create_template():
-    """Create an Excel template for Jira test cases."""
-    if not os.path.exists(TEMPLATE_FILE):
-        wb = openpyxl.Workbook()
+def create_excel_template():
+    """Create an Excel template for uploading test cases if the file doesn't exist."""
+    template_path = "Jira_Test_Cases_Template.xlsx"
+    
+    if not os.path.exists(template_path):
+        print("Template does not exist. Creating template...")
+        
+        wb = Workbook()
         ws = wb.active
-        ws.title = "Test Cases"
-
-        # Define columns
-        columns = ["Test Case Summary", "Test Step", "Priority"]
-
-        # Write header
-        for i, col in enumerate(columns, 1):
-            ws.cell(row=1, column=i, value=col)
-
-        # Add dropdown for Priority for the specific project
-        priority_options = fetch_project_specific_dropdown_values("priority", PROJECT_KEY)
-        if priority_options:
-            dv = DataValidation(type="list", formula1=f'"{",".join(priority_options)}"', showDropDown=True)
-            ws.add_data_validation(dv)
-            for row in range(2, 100):  # Assuming maximum of 100 test cases
-                dv.add(ws[f'C{row}'])  # Priority is in column C
-
-        # Save the file
-        wb.save(TEMPLATE_FILE)
-        print(f"Template created: {TEMPLATE_FILE}")
+        ws.title = "TestCases"
+        
+        # Add headers
+        headers = ["Summary", "Priority", "Issue Type", "Step Description", "Expected Result", "Test Data"]
+        ws.append(headers)
+        
+        # Fetch dropdown values for priority and issue type from Jira
+        priority_values = fetch_dropdown_values("priority")
+        issue_type_values = fetch_dropdown_values("issuetype")
+        
+        # Create a hidden sheet to store dropdown values
+        ws_data = wb.create_sheet("DropdownValues")
+        for idx, val in enumerate(priority_values, start=1):
+            ws_data[f"A{idx}"] = val
+        for idx, val in enumerate(issue_type_values, start=1):
+            ws_data[f"B{idx}"] = val
+        
+        # Apply data validation to Priority and Issue Type columns
+        priority_validation = DataValidation(type="list", formula1="DropdownValues!A1:A{}".format(len(priority_values)))
+        issue_type_validation = DataValidation(type="list", formula1="DropdownValues!B1:B{}".format(len(issue_type_values)))
+        
+        ws.add_data_validation(priority_validation)
+        ws.add_data_validation(issue_type_validation)
+        
+        priority_validation.add(ws["B2:B100"])  # Limit to the first 100 rows
+        issue_type_validation.add(ws["C2:C100"])
+        
+        wb.save(template_path)
+        print("Template created successfully.")
     else:
-        print("Template already exists. Ready for upload.")
+        print("Template already exists. You can populate it and upload test cases.")
 
-def read_excel_and_upload():
-    """Read the Excel file and upload test cases to Jira."""
-    if not os.path.exists(TEMPLATE_FILE):
-        print(f"Template file '{TEMPLATE_FILE}' not found. Please create it first.")
-        return
-
-    wb = openpyxl.load_workbook(TEMPLATE_FILE)
-    ws = wb.active
-
-    previous_summary = None
-    test_cases_to_upload = []
-
-    # Collect test case details
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, values_only=True):
-        summary, step, priority = row
-        if summary:
-            # Detect change in Test Case Summary
-            if summary != previous_summary:
-                test_case_data = {
-                    "summary": summary,
-                    "steps": [],
-                    "priority": priority
+def upload_test_cases():
+    """Upload test cases to Jira based on the content in the Excel template."""
+    template_path = "Jira_Test_Cases_Template.xlsx"
+    
+    if os.path.exists(template_path):
+        wb = openpyxl.load_workbook(template_path)
+        ws = wb["TestCases"]
+        
+        test_cases = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            summary, priority, issue_type, step_desc, expected_result, test_data = row
+            if summary:  # If summary exists, consider this a valid test case
+                test_case = {
+                    "fields": {
+                        "summary": summary,
+                        "priority": {"name": priority},
+                        "issuetype": {"name": issue_type},
+                        "project": {"key": PROJECT_KEY}
+                    },
+                    "steps": [
+                        {"description": step_desc, "expected_result": expected_result, "test_data": test_data}
+                    ]
                 }
-                test_cases_to_upload.append(test_case_data)
-                previous_summary = summary
-
-            # Add step to the latest test case
-            if test_cases_to_upload:
-                test_cases_to_upload[-1]['steps'].append(step)
-
-    if test_cases_to_upload:
-        confirm = input(f"Found {len(test_cases_to_upload)} test cases. Do you want to upload them? (yes/no): ")
-        if confirm.lower() == 'yes':
-            for test_case in test_cases_to_upload:
-                upload_to_jira(test_case)
+                test_cases.append(test_case)
+        
+        if not test_cases:
+            print("No valid test cases found for upload. Please populate the template.")
+            return
+        
+        # Confirm upload
+        confirmation = input("Do you want to upload the test cases to Jira? (yes/no): ").lower()
+        if confirmation == "yes":
+            for test_case in test_cases:
+                # Create issue in Jira
+                response = requests.post(f"{JIRA_BASE_URL}/rest/api/3/issue", headers=HEADERS, json=test_case['fields'])
+                if response.status_code == 201:
+                    issue_key = response.json().get('key')
+                    print(f"Test case created with key: {issue_key}")
+                    # Create steps in Zephyr Squad
+                    create_test_steps(issue_key, test_case['steps'])
+                else:
+                    print(f"Failed to create test case: {test_case['fields']['summary']}")
         else:
-            print("Upload canceled.")
+            print("Upload cancelled by the user.")
     else:
-        print("No valid test cases found for upload. Please populate the template.")
+        print("No template found. Please generate a template first.")
 
-def upload_to_jira(test_case):
-    """Upload test case and steps to Jira using Zephyr Squad."""
-    issue_data = {
-        "fields": {
-            "project": {
-                "key": PROJECT_KEY
-            },
-            "summary": test_case['summary'],
-            "priority": {"name": test_case['priority']},
-            "issuetype": {
-                "name": "Test"  # Assuming "Test" is the issue type
-            }
+def create_test_steps(issue_key, steps):
+    """Create test steps in Zephyr Squad."""
+    for step in steps:
+        step_payload = {
+            "issueId": issue_key,
+            "step": step["description"],
+            "data": step["test_data"],
+            "result": step["expected_result"]
         }
-    }
-
-    response = requests.post(f"{JIRA_URL}issue", headers=HEADERS, json=issue_data)
-    if response.status_code == 201:
-        issue_key = response.json()['key']
-        print(f"Test case '{test_case['summary']}' created with issue key: {issue_key}")
-
-        # Upload steps to Zephyr (for the newly created test case)
-        for step in test_case['steps']:
-            step_data = {
-                "step": step,
-                "issueId": issue_key
-            }
-            response = requests.post(f"{ZEPHYR_URL}/teststep/{issue_key}", headers=HEADERS, json=step_data)
-            if response.status_code == 200:
-                print(f"Step '{step}' added to test case {issue_key}")
-            else:
-                print(f"Failed to add step '{step}' to test case {issue_key}")
-    else:
-        print(f"Failed to create test case '{test_case['summary']}'")
-
-def main():
-    if os.path.exists(TEMPLATE_FILE):
-        print(f"Loading test cases from '{TEMPLATE_FILE}'...")
-        read_excel_and_upload()
-    else:
-        print("Template not found. Creating template...")
-        create_template()
+        response = requests.post(f"{ZEPHYR_BASE_URL}/rest/zephyr/1.0/teststep", headers=HEADERS, json=step_payload)
+        if response.status_code == 201:
+            print(f"Step created successfully for issue {issue_key}")
+        else:
+            print(f"Failed to create step for issue {issue_key}")
 
 if __name__ == "__main__":
-    main()
+    # Check if the template exists
+    if not os.path.exists("Jira_Test_Cases_Template.xlsx"):
+        create_excel_template()
+    else:
+        upload_test_cases()

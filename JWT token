@@ -29,7 +29,7 @@ def generate_qsh(method, api_path, query_params=None):
     return qsh
 
 # Generate JWT token
-def generate_jwt(http_method, base_url, api_path, client_key, shared_secret, query_params=None):
+def generate_jwt(http_method, base_url, api_path, client_key, shared_secret, account_id, query_params=None):
     # Current time (issued at time)
     issued_at = int(time.time())
     
@@ -44,7 +44,8 @@ def generate_jwt(http_method, base_url, api_path, client_key, shared_secret, que
         "iss": client_key,              # Issuer (client key)
         "iat": issued_at,               # Issued at time
         "exp": expiration_time,         # Expiration time
-        "qsh": qsh                     # Query String Hash
+        "qsh": qsh,                     # Query String Hash
+        "sub": account_id               # Account ID of the user generating the token
     }
 
     # Generate the JWT token (sign with shared secret using HS256 algorithm)
@@ -53,12 +54,12 @@ def generate_jwt(http_method, base_url, api_path, client_key, shared_secret, que
     return token
 
 # Function to write test steps using /public/rest/api/1.0
-def write_test_steps(project_key, issue_key, zephyr_base_url, client_key, shared_secret, steps):
+def write_test_steps(project_key, issue_key, zephyr_base_url, client_key, shared_secret, account_id, steps):
     api_path = f"/public/rest/api/1.0/teststep/{issue_key}"  # API path to write test steps
     http_method = "POST"
     
-    # Generate the JWT token
-    jwt_token = generate_jwt(http_method, zephyr_base_url, api_path, client_key, shared_secret)
+    # Generate the JWT token (with account ID)
+    jwt_token = generate_jwt(http_method, zephyr_base_url, api_path, client_key, shared_secret, account_id)
 
     # Headers with JWT token
     headers = {
@@ -92,6 +93,7 @@ if __name__ == "__main__":
     issue_key = "TEST-123"  # Jira issue key (test case) where you want to add steps
     client_key = "your_client_key"  # Client key issued to your app
     shared_secret = "your_shared_secret"  # Shared secret for JWT signing
+    account_id = "your_account_id"  # Account ID of the user (required for authentication)
 
     # Example test steps
     test_steps = {
@@ -101,4 +103,4 @@ if __name__ == "__main__":
     }
 
     # Call the function to write test steps
-    write_test_steps(project_key, issue_key, zephyr_base_url, client_key, shared_secret, test_steps)
+    write_test_steps(project_key, issue_key, zephyr_base_url, client_key, shared_secret, account_id, test_steps)

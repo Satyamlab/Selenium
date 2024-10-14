@@ -1,55 +1,103 @@
 import jwt
 import time
+import hashlib
+import json
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlencode
 
-# Function to generate JWT token for Zephyr Squad
-def generate_jwt(http_method, jira_base_url, api_path, shared_secret, client_key, query_params=None):
-    # Construct the canonical URL path
-    canonical_url = urlparse(api_path).path
-    
-    # Get the current time (issued at time)
+# Generate QSH (Query String Hash)
+def generate_qsh(method, api_path, query_params=None):
+    if query_params is None:
+        query_params = {}
+
+    # Lowercase the method and API path
+    canonical_method = method.upper()
+    canonical_path = api_path
+
+    # Encode query parameters into query string
+    if query_params:
+        query_string = urlencode(sorted(query_params.items()))
+    else:
+        query_string = ""
+
+    # Create the QSH base string
+    qsh_string = f"{canonical_method}&{canonical_path}&{query_string}"
+
+    # Generate the hash of the QSH string
+    qsh = hashlib.sha256(qsh_string.encode('utf-8')).hexdigest()
+
+    return qsh
+
+# Generate JWT token
+def generate_jwt(http_method, base_url, api_path, client_key, shared_secret, query_params=None):
+    # Current time (issued at time)
     issued_at = int(time.time())
-    expire = issued_at + 180  # Token expiration (e.g., 3 minutes)
+    
+    # Token expiration time (3 minutes later)
+    expiration_time = issued_at + 180
 
-    # Define JWT payload (claim set)
+    # Generate the QSH
+    qsh = generate_qsh(http_method, api_path, query_params)
+
+    # JWT payload (claims)
     payload = {
-        'iss': client_key,               # Client key
-        'iat': issued_at,                # Issued at time
-        'exp': expire,                   # Expiration time
-        'qsh': jwt.encode(
-            {
-                'method': http_method.upper(),
-                'path': canonical_url,
-                'query': query_params if query_params else ""
-            }, shared_secret, algorithm='HS256')
+        "iss": client_key,              # Issuer (client key)
+        "iat": issued_at,               # Issued at time
+        "exp": expiration_time,         # Expiration time
+        "qsh": qsh                     # Query String Hash
     }
 
-    # Generate the JWT token
+    # Generate the JWT token (sign with shared secret using HS256 algorithm)
     token = jwt.encode(payload, shared_secret, algorithm='HS256')
 
     return token
 
-# Example usage
-if __name__ == "__main__":
-    jira_base_url = "https://your-jira-instance.atlassian.net"
-    api_path = "/rest/zapi/latest/execution"  # API endpoint
-    http_method = "GET"  # or POST/PUT/DELETE depending on your request
-    shared_secret = "your_shared_secret"
-    client_key = "your_client_key"
-    query_params = None  # Any query parameters for the API, if needed
-
-    # Generate JWT token
-    jwt_token = generate_jwt(http_method, jira_base_url, api_path, shared_secret, client_key, query_params)
-
-    print("Generated JWT Token:", jwt_token)
+# Function to write test steps
+def write_test_steps(issue_key, zephyr_base_url, client_key, shared_secret, steps):
+    api_path = f"/rest/zapi/latest/teststep/{issue_key}"  # API path to write test steps
+    http_method = "POST"
     
-    # Now you can use this JWT token to make an authenticated API request to Zephyr Squad
+    # Generate the JWT token
+    jwt_token = generate_jwt(http_method, zephyr_base_url, api_path, client_key, shared_secret)
+
+    # Headers with JWT token
     headers = {
         "Authorization": f"JWT {jwt_token}",
         "Content-Type": "application/json"
     }
 
-    # Example API call
-    response = requests.get(f"{jira_base_url}{api_path}", headers=headers)
-    print(response.status_code, response.text)
+    # Test steps payload
+    data = {
+        "step": steps["step_description"],      # Step description
+        "data": steps["test_data"],             # Test data
+        "result": steps["expected_result"]      # Expected result
+    }
+
+    # API URL
+    api_url = f"{zephyr_base_url}{api_path}"
+
+    # Send POST request to write the test step
+    response = requests.post(api_url, headers=headers, data=json.dumps(data))
+
+    # Check response status
+    if response.status_code == 200:
+        print(f"Test steps added successfully for issue {issue_key}")
+    else:
+        print(f"Failed to add test steps: {response.status_code}, {response.text}")
+
+# Example usage
+if __name__ == "__main__":
+    zephyr_base_url = "https://your-jira-instance.atlassian.net"
+    issue_key = "TEST-123"  # Jira issue key (test case) where you want to add steps
+    client_key = "your_client_key"  # Client key issued to your app
+    shared_secret = "your_shared_secret"  # Shared secret for JWT signing
+
+    # Example test steps
+    test_steps = {
+        "step_description": "Login to the application",
+        "test_data": "username, password",
+        "expected_result": "User is logged in successfully"
+    }
+
+    # Call the function to write test steps
+    write_test_steps(issue_key, zephyr_base_url, client_key, shared_secret, test_steps)

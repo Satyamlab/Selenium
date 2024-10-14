@@ -52,9 +52,9 @@ def generate_jwt(http_method, base_url, api_path, client_key, shared_secret, que
 
     return token
 
-# Function to write test steps
-def write_test_steps(issue_key, zephyr_base_url, client_key, shared_secret, steps):
-    api_path = f"/rest/zapi/latest/teststep/{issue_key}"  # API path to write test steps
+# Function to write test steps using /public/rest/api/1.0
+def write_test_steps(project_key, issue_key, zephyr_base_url, client_key, shared_secret, steps):
+    api_path = f"/public/rest/api/1.0/teststep/{issue_key}"  # API path to write test steps
     http_method = "POST"
     
     # Generate the JWT token
@@ -74,20 +74,21 @@ def write_test_steps(issue_key, zephyr_base_url, client_key, shared_secret, step
     }
 
     # API URL
-    api_url = f"{zephyr_base_url}{api_path}"
+    api_url = f"{zephyr_base_url}{api_path}?projectKey={project_key}"
 
     # Send POST request to write the test step
     response = requests.post(api_url, headers=headers, data=json.dumps(data))
 
     # Check response status
     if response.status_code == 200:
-        print(f"Test steps added successfully for issue {issue_key}")
+        print(f"Test steps added successfully for issue {issue_key} in project {project_key}")
     else:
         print(f"Failed to add test steps: {response.status_code}, {response.text}")
 
 # Example usage
 if __name__ == "__main__":
     zephyr_base_url = "https://your-jira-instance.atlassian.net"
+    project_key = "TEST"  # Project key where the test case resides
     issue_key = "TEST-123"  # Jira issue key (test case) where you want to add steps
     client_key = "your_client_key"  # Client key issued to your app
     shared_secret = "your_shared_secret"  # Shared secret for JWT signing
@@ -100,4 +101,4 @@ if __name__ == "__main__":
     }
 
     # Call the function to write test steps
-    write_test_steps(issue_key, zephyr_base_url, client_key, shared_secret, test_steps)
+    write_test_steps(project_key, issue_key, zephyr_base_url, client_key, shared_secret, test_steps)

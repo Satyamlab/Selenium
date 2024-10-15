@@ -1,0 +1,87 @@
+import pandas as pd
+import requests
+import json
+
+# Configuration variables
+JIRA_URL = "https://your-domain.atlassian.net"  # Change to your Jira domain
+API_TOKEN = "your_api_token"  # Your Jira API token
+EMAIL = "your_email@example.com"  # Your Jira email
+PROJECT_ID = "your_project_id"  # Jira Project ID
+ZEPHYR_URL = JIRA_URL + "/rest/zephyr/latest"  # Zephyr API base URL
+
+# Function to create a test issue in Jira
+def create_test_issue(summary):
+    url = f"{JIRA_URL}/rest/api/2/issue/"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {requests.auth._basic_auth_str(EMAIL, API_TOKEN)}"
+    }
+    payload = {
+        "fields": {
+            "project": {"id": PROJECT_ID},
+            "summary": summary,
+            "issuetype": {"name": "Test"}  # Specify the issue type as "Test"
+        }
+    }
+    response = requests.post(url, headers=headers, data=json.dumps(payload))
+    
+    if response.status_code == 201:
+        return response.json()["id"]  # Return the newly created issue ID
+    else:
+        print(f"Error creating test issue: {response.content}")
+        return None
+
+# Function to add test steps to the created test issue
+def add_test_steps(issue_id, steps):
+    url = f"{ZEPHYR_URL}/teststep"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {requests.auth._basic_auth_str(EMAIL, API_TOKEN)}"
+    }
+    
+    for step in steps:
+        payload = {
+            "issueId": issue_id,
+            "testStep": step["test_step"],
+            "expectedResult": step["expected_result"],
+            "testData": step["test_data"],
+            "projectId": PROJECT_ID  # Include the project ID here
+        }
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        
+        if response.status_code != 200:
+            print(f"Error adding test step: {response.content}")
+
+def load_test_cases(file_path):
+    # Load the Excel file
+    df = pd.read_excel(file_path)
+    return df
+
+def main():
+    file_path = "test_cases.xlsx"  # Replace with your Excel file path
+    df = load_test_cases(file_path)
+    
+    current_summary = ""
+    
+    for index, row in df.iterrows():
+        # Update the current summary
+        if pd.notna(row['Summary']):
+            current_summary = row['Summary']
+        
+        # Create a test issue if there's a new summary
+        if current_summary and (index == 0 or row['Summary'] != df.iloc[index - 1]['Summary']):
+            issue_id = create_test_issue(current_summary)
+            if issue_id:
+                steps = []
+                # Add steps for this test issue
+                while index < len(df) and (pd.isna(df.iloc[index]['Summary']) or df.iloc[index]['Summary'] == current_summary):
+                    steps.append({
+                        "test_step": row['Test Step'],
+                        "expected_result": row['Expected Result'],
+                        "test_data": row['Test Data']
+                    })
+                    index += 1
+                add_test_steps(issue_id, steps)
+
+if __name__ == "__main__":
+    main()

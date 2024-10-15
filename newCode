@@ -1,19 +1,33 @@
-import pandas as pd
+import openpyxl
+import json
 
 def load_test_cases(file_path):
-    # Load the Excel file
-    df = pd.read_excel(file_path)
-    return df
+    # Load the Excel file using openpyxl
+    workbook = openpyxl.load_workbook(file_path)
+    sheet = workbook.active
 
-def create_test_data(df):
-    # Dictionary to hold test cases
+    # Read the headers from the first row
+    headers = [cell.value for cell in sheet[1]]
+
+    # Prepare a list to hold the rows
+    test_cases = []
+    
+    # Read each subsequent row of the Excel sheet
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        test_case = dict(zip(headers, row))
+        test_cases.append(test_case)
+    
+    return test_cases
+
+def create_test_data(test_cases):
+    # Dictionary to hold structured test case data
     test_data = {}
     
     current_summary = ""
     
-    for index, row in df.iterrows():
-        # If the summary is not empty, update the current summary
-        if pd.notna(row['Summary']):
+    for row in test_cases:
+        # Update the current summary if it changes
+        if row['Summary']:
             current_summary = row['Summary']
         
         # If current_summary exists, create a test case entry
@@ -34,7 +48,6 @@ def create_test_data(df):
 
 def save_test_data(test_data, output_file):
     # Save the test data to a JSON file
-    import json
     with open(output_file, 'w') as outfile:
         json.dump(test_data, outfile, indent=4)
 
@@ -42,8 +55,8 @@ def main():
     file_path = "test_cases.xlsx"  # Replace with your Excel file path
     output_file = "test_data.json"  # The file where test data will be saved
     
-    df = load_test_cases(file_path)
-    test_data = create_test_data(df)
+    test_cases = load_test_cases(file_path)
+    test_data = create_test_data(test_cases)
     
     # Save the test data set to a file
     save_test_data(test_data, output_file)

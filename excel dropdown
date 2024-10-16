@@ -1,0 +1,72 @@
+import openpyxl
+from openpyxl.worksheet.datavalidation import DataValidation
+
+def create_excel_template():
+    # Create a new Excel workbook and select the active sheet
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Test Case Template"
+
+    # Define the columns and their corresponding dropdown values
+    columns_with_dropdowns = {
+        'Priority': ['High', 'Medium', 'Low'],  # Example list for Priority
+        'Classification': [f"Classification {i}" for i in range(1, 101)],  # Simulated large dropdown list
+        # Add more columns and dropdowns as needed
+    }
+
+    # Headers for the test case template
+    headers = ['Summary', 'Description', 'Priority', 'Classification', 'Test Step', 'Expected Result', 'Test Data']
+
+    # Write headers to the main sheet
+    for col_num, header in enumerate(headers, 1):
+        ws.cell(row=1, column=col_num).value = header
+
+    # Create a hidden sheet for dropdown values
+    hidden_sheet = wb.create_sheet('Hidden')
+
+    # Write dropdown values in the hidden sheet with headers
+    for col_num, (column_name, dropdown_values) in enumerate(columns_with_dropdowns.items(), 1):
+        # Set header for dropdowns in the hidden sheet
+        hidden_sheet.cell(row=1, column=col_num).value = column_name
+        # Write the dropdown values under each header
+        for row_num, value in enumerate(dropdown_values, 2):  # Start from row 2
+            hidden_sheet.cell(row=row_num, column=col_num).value = value
+
+    # Add dropdowns to the main sheet based on the matching headers
+    for col_num, header in enumerate(headers, 1):
+        if header in columns_with_dropdowns:
+            # Get the letter of the current column in the main sheet
+            col_letter = openpyxl.utils.get_column_letter(col_num)
+
+            # Get the column letter in the hidden sheet for the dropdown list
+            dropdown_col_index = list(columns_with_dropdowns.keys()).index(header) + 1  # 1-based index
+            dropdown_col_letter = openpyxl.utils.get_column_letter(dropdown_col_index)
+
+            # Calculate the number of dropdown values in the hidden sheet
+            num_values = len(columns_with_dropdowns[header])
+
+            # Create a named range for each dropdown column from hidden sheet
+            named_range = f"Hidden!${dropdown_col_letter}$2:${dropdown_col_letter}${num_values + 1}"
+
+            # Create a data validation object for the dropdown
+            dv = DataValidation(type="list", formula1=named_range, showDropDown=False)
+            dv.error = "Invalid Entry"
+            dv.errorTitle = "Invalid Selection"
+            dv.prompt = f"Choose a {header}"
+            dv.promptTitle = f"{header} Options"
+
+            # Apply the data validation dropdown to each row in the main sheet (for that column)
+            ws.add_data_validation(dv)
+            for row in range(2, 1001):  # Apply the dropdown to rows 2-1000
+                dv.add(ws[f"{col_letter}{row}"])
+
+    # Hide the "Hidden" sheet so users won't see it
+    hidden_sheet.sheet_state = 'hidden'
+
+    # Save the workbook
+    wb.save('test_case_template_with_hidden_dropdowns.xlsx')
+    print("Excel template created with dropdowns and hidden sheet for dropdown values.")
+
+# Main execution
+if __name__ == "__main__":
+    create_excel_template()

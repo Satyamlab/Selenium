@@ -1,43 +1,50 @@
 import openpyxl
+import requests
 import json
 
+# Configuration variables
+JIRA_URL = "https://your-domain.atlassian.net"  # Change to your Jira domain
+API_TOKEN = "your_api_token"  # Your Jira API token
+EMAIL = "your_email@example.com"  # Your Jira email
+PROJECT_ID = "your_project_id"  # Jira Project ID
+ZEPHYR_URL = JIRA_URL + "/rest/zephyr/latest"  # Zephyr API base URL
+
+# Function to load test cases from Excel
 def load_test_cases(file_path):
-    # Load the Excel file using openpyxl
     workbook = openpyxl.load_workbook(file_path)
     sheet = workbook.active
 
     # Read the headers from the first row
     headers = [cell.value for cell in sheet[1]]
 
-    # Prepare a list to hold the rows
     test_cases = []
     
-    # Read each subsequent row of the Excel sheet
+    # Read the rows (min_row=2 skips the header row)
     for row in sheet.iter_rows(min_row=2, values_only=True):
         test_case = dict(zip(headers, row))
         test_cases.append(test_case)
     
     return test_cases
 
+# Function to structure test data from Excel
 def create_test_data(test_cases):
-    # Dictionary to hold structured test case data
     test_data = {}
-    
     current_summary = ""
-    
+
     for row in test_cases:
-        # Update the current summary if it changes
-        if row['Summary']:
+        if row['Summary']:  # If summary is not blank, it's a new test case
             current_summary = row['Summary']
         
-        # If current_summary exists, create a test case entry
-        if current_summary:
+        if current_summary:  # Create a test case entry if summary exists
             if current_summary not in test_data:
                 test_data[current_summary] = {
+                    "description": row.get("Description"),
+                    "classification": row.get("Classification"),
+                    "priority": row.get("Priority"),
                     "test_steps": []
                 }
-        
-            # Add the test step, expected result, and test data
+            
+            # Add test steps
             test_data[current_summary]["test_steps"].append({
                 "test_step": row['Test Step'],
                 "expected_result": row['Expected Result'],
@@ -46,22 +53,74 @@ def create_test_data(test_cases):
     
     return test_data
 
-def save_test_data(test_data, output_file):
-    # Save the test data to a JSON file
-    with open(output_file, 'w') as outfile:
-        json.dump(test_data, outfile, indent=4)
+# Function to create a test issue in Jira
+def create_test_issue(summary, description, classification, priority):
+    url = f"{JIRA_URL}/rest/api/2/issue/"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {requests.auth._basic_auth_str(EMAIL, API_TOKEN)}"
+    }
+    payload = {
+        "fields": {
+            "project": {"id": PROJECT_ID},
+            "summary": summary,
+            "description": description,
+            "issuetype": {"name": "Test"},
+            "priority": {"name": priority},
+            "customfield_12345": classification  # Replace with correct custom field ID
+        }
+    }
+    response = requests.post(url, headers=headers, data=json.dumps(payload))
 
+    if response.status_code == 201:
+        return response.json()["id"]  # Return created issue ID
+    else:
+        print(f"Error creating test issue: {response.content}")
+        return None
+
+# Function to add test steps to a test issue in Zephyr Squad
+def add_test_steps(issue_id, steps):
+    url = f"{ZEPHYR_URL}/teststep"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {requests.auth._basic_auth_str(EMAIL, API_TOKEN)}"
+    }
+    
+    for step in steps:
+        payload = {
+            "issueId": issue_id,
+            "testStep": step["test_step"],
+            "expectedResult": step["expected_result"],
+            "testData": step["test_data"],
+            "projectId": PROJECT_ID
+        }
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        
+        if response.status_code != 200:
+            print(f"Error adding test step: {response.content}")
+
+# Function to process and upload test cases directly
+def upload_test_cases(test_data):
+    for summary, details in test_data.items():
+        issue_id = create_test_issue(
+            summary,
+            details["description"],
+            details["classification"],
+            details["priority"]
+        )
+        if issue_id:
+            add_test_steps(issue_id, details["test_steps"])
+
+# Main execution
 def main():
     file_path = "test_cases.xlsx"  # Replace with your Excel file path
-    output_file = "test_data.json"  # The file where test data will be saved
-    
+
+    # Load and create test data directly from Excel
     test_cases = load_test_cases(file_path)
     test_data = create_test_data(test_cases)
     
-    # Save the test data set to a file
-    save_test_data(test_data, output_file)
-    
-    print(f"Test data set saved to {output_file}")
+    # Upload test cases and steps directly to Jira and Zephyr Squad
+    upload_test_cases(test_data)
 
 if __name__ == "__main__":
     main()

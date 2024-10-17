@@ -1,0 +1,20 @@
+import re
+
+# Function to extract the expected QSH from the error message
+def extract_expected_qsh(error_message):
+    # Regular expression to match the expected qsh value
+    match = re.search(r"expecting claim 'qsh' to have value '(\w+)'", error_message)
+    if match:
+        return match.group(1)  # Return the expected QSH value
+    else:
+        print("Expected QSH not found in the error message.")
+        return None
+
+# Example usage
+error_message = "expecting claim 'qsh' to have value 'gdhg' but instead it has the value 'hfghfg'"
+expected_qsh = extract_expected_qsh(error_message)
+
+if expected_qsh:
+    print(f"Extracted expected QSH: {expected_qsh}")
+else:
+    print("Failed to extract expected QSH.")

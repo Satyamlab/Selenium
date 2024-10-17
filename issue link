@@ -1,0 +1,46 @@
+import requests
+import json
+
+# Function to link a test case to a story in Jira
+def link_test_case_to_story(jira_url, test_case_key, story_key, jira_account_email, jira_api_token):
+    # Jira API endpoint for creating issue links
+    url = f"{jira_url}/rest/api/3/issueLink"
+
+    # Headers for authentication and content type
+    headers = {
+        "Authorization": f"Basic {jira_api_token}",
+        "Content-Type": "application/json"
+    }
+
+    # JSON payload for linking issues
+    payload = {
+        "type": {
+            "name": "Relates"  # Type of link (e.g., Relates, Blocks, etc.)
+        },
+        "inwardIssue": {
+            "key": test_case_key  # Test case issue key
+        },
+        "outwardIssue": {
+            "key": story_key  # Story issue key
+        }
+    }
+
+    # Make the POST request to create the issue link
+    response = requests.post(url, headers=headers, data=json.dumps(payload), auth=(jira_account_email, jira_api_token))
+
+    # Check the response
+    if response.status_code == 201:
+        print(f"Test case {test_case_key} successfully linked to story {story_key}.")
+    else:
+        print(f"Failed to link test case {test_case_key} to story {story_key}. Status code: {response.status_code}")
+        print("Response:", response.text)
+
+# Example usage
+jira_url = "https://your-jira-cloud-instance.atlassian.net"
+test_case_key = "TEST-123"  # Replace with your actual test case issue key
+story_key = "STORY-456"     # Replace with your actual story issue key
+jira_account_email = "your_email@company.com"  # Your Jira account email
+jira_api_token = "your_jira_api_token"  # Your Jira API token (Base64 encoded)
+
+# Call the function to link the test case to the story
+link_test_case_to_story(jira_url, test_case_key, story_key, jira_account_email, jira_api_token)

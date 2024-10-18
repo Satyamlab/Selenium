@@ -1,0 +1,152 @@
+import requests
+
+# Function to get all versions in the project
+def get_versions(zephyr_url, project_id, account_id, api_token):
+    url = f"{zephyr_url}/rest/api/2/project/{project_id}/versions"
+    auth = (account_id, api_token)
+    
+    response = requests.get(url, auth=auth)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Error fetching versions: {response.status_code}")
+        return None
+
+# Function to get all cycles in a version from Zephyr Cloud
+def get_cycles_in_version(zephyr_url, project_id, version_id, account_id, api_token):
+    url = f"{zephyr_url}/public/rest/api/1.0/cycles/search?projectId={project_id}&versionId={version_id}"
+    auth = (account_id, api_token)
+    
+    response = requests.get(url, auth=auth)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Error fetching cycles: {response.status_code}")
+        return None
+
+# Function to create a new cycle if it doesn't exist in Zephyr Cloud
+def create_or_get_cycle(zephyr_url, project_id, version_id, cycle_name, account_id, api_token):
+    cycles = get_cycles_in_version(zephyr_url, project_id, version_id, account_id, api_token)
+    
+    if cycles:
+        for cycle in cycles:
+            if cycle['name'] == cycle_name:
+                print(f"Cycle '{cycle_name}' already exists with ID: {cycle['id']}")
+                return cycle['id']
+    
+    # Create a new cycle if it doesn't exist
+    url = f"{zephyr_url}/public/rest/api/1.0/cycle"
+    payload = {
+        "name": cycle_name,
+        "projectId": project_id,
+        "versionId": version_id
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    auth = (account_id, api_token)
+    
+    response = requests.post(url, json=payload, auth=auth, headers=headers)
+    
+    if response.status_code == 200:
+        cycle = response.json()
+        print(f"Cycle '{cycle_name}' created successfully with ID: {cycle['id']}")
+        return cycle['id']
+    else:
+        print(f"Error creating cycle: {response.status_code}")
+        return None
+
+# Function to get all folders in a cycle from Zephyr Cloud
+def get_folders_in_cycle(zephyr_url, project_id, version_id, cycle_id, account_id, api_token):
+    url = f"{zephyr_url}/public/rest/api/1.0/folders?projectId={project_id}&versionId={version_id}&cycleId={cycle_id}"
+    auth = (account_id, api_token)
+    
+    response = requests.get(url, auth=auth)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Error fetching folders: {response.status_code}")
+        return None
+
+# Function to create a new folder in Zephyr Cloud if it doesn't exist
+def create_or_get_folder_in_cycle(zephyr_url, project_id, version_id, cycle_id, folder_name, account_id, api_token):
+    folders = get_folders_in_cycle(zephyr_url, project_id, version_id, cycle_id, account_id, api_token)
+    
+    if folders:
+        for folder in folders:
+            if folder['name'] == folder_name:
+                print(f"Folder '{folder_name}' already exists with ID: {folder['id']}")
+                return folder['id']
+    
+    # Create the folder if it does not exist
+    url = f"{zephyr_url}/public/rest/api/1.0/folder"
+    payload = {
+        "cycleId": cycle_id,
+        "projectId": project_id,
+        "versionId": version_id,
+        "name": folder_name,
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    auth = (account_id, api_token)
+    
+    response = requests.post(url, json=payload, auth=auth, headers=headers)
+    
+    if response.status_code == 200:
+        folder = response.json()
+        print(f"Folder '{folder_name}' created successfully with ID: {folder['id']}")
+        return folder['id']
+    else:
+        print(f"Error creating folder: {response.status_code} - {response.text}")
+        return None
+
+# Main function to handle the logic of creating cycle and folder, then uploading test cases
+def handle_test_case_upload(zephyr_url, project_id, version_name, cycle_name, folder_name, account_id, api_token, test_cases):
+    # Step 1: Get the version ID from the name
+    versions = get_versions(zephyr_url, project_id, account_id, api_token)
+    
+    version_id = None
+    if versions:
+        for version in versions:
+            if version['name'] == version_name:
+                version_id = version['id']
+                break
+    
+    if not version_id:
+        print(f"Version '{version_name}' not found.")
+        return
+
+    # Step 2: Get or create the cycle
+    cycle_id = create_or_get_cycle(zephyr_url, project_id, version_id, cycle_name, account_id, api_token)
+    if not cycle_id:
+        print(f"Error creating or fetching cycle '{cycle_name}'.")
+        return
+    
+    # Step 3: Get or create the folder
+    folder_id = create_or_get_folder_in_cycle(zephyr_url, project_id, version_id, cycle_id, folder_name, account_id, api_token)
+    if not folder_id:
+        print(f"Error creating or fetching folder '{folder_name}'.")
+        return
+
+    # Step 4: Upload test cases to the folder in the cycle
+    upload_test_cases_to_folder(zephyr_url, project_id, version_id, cycle_id, folder_id, account_id, api_token, test_cases)
+
+# Function to upload test cases (you can implement this part as per your existing logic)
+def upload_test_cases_to_folder(zephyr_url, project_id, version_id, cycle_id, folder_id, account_id, api_token, test_cases):
+    # Your logic to upload test cases goes here
+    print(f"Uploading test cases to folder ID: {folder_id} in cycle ID: {cycle_id}...")
+    # Implement the upload logic here
+
+# Sample Usage
+zephyr_url = "https://prod.play.zephyr.com"  # Replace with your Zephyr Cloud URL
+project_id = "12345"  # Replace with your project ID
+version_name = "Version 1.0"  # Replace with your version name
+cycle_name = "Regression Cycle"  # Replace with your test cycle name
+folder_name = "Smoke Tests"  # Replace with your folder name
+account_id = "your_jira_email"  # Your Jira account email
+api_token = "your_api_token"  # Your Jira API token
+test_cases = []  # Provide test cases as a list of dictionaries
+
+handle_test_case_upload(zephyr_url, project_id, version_name, cycle_name, folder_name, account_id, api_token, test_cases)

@@ -1,4 +1,5 @@
 import requests
+import json
 
 # Function to get all versions in the project
 def get_versions(zephyr_url, project_id, account_id, api_token):
@@ -102,6 +103,28 @@ def create_or_get_folder_in_cycle(zephyr_url, project_id, version_id, cycle_id, 
         print(f"Error creating folder: {response.status_code} - {response.text}")
         return None
 
+# Function to upload test cases to the specified folder within the cycle
+def upload_test_cases_to_folder(zephyr_url, project_id, version_id, cycle_id, folder_id, account_id, api_token, test_cases):
+    url = f"{zephyr_url}/public/rest/api/1.0/executions/add/folder/{folder_id}"
+    
+    # Prepare the payload with test case issue IDs (test_cases should be a list of Jira issue IDs)
+    payload = {
+        "issues": test_cases,  # List of test case issue IDs to upload
+        "versionId": version_id,
+        "cycleId": cycle_id,
+        "projectId": project_id
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    auth = (account_id, api_token)
+    
+    response = requests.post(url, json=payload, auth=auth, headers=headers)
+    
+    if response.status_code == 200:
+        print(f"Test cases successfully uploaded to folder ID: {folder_id} in cycle ID: {cycle_id}.")
+    else:
+        print(f"Error uploading test cases: {response.status_code} - {response.text}")
+
 # Main function to handle the logic of creating cycle and folder, then uploading test cases
 def handle_test_case_upload(zephyr_url, project_id, version_name, cycle_name, folder_name, account_id, api_token, test_cases):
     # Step 1: Get the version ID from the name
@@ -133,12 +156,6 @@ def handle_test_case_upload(zephyr_url, project_id, version_name, cycle_name, fo
     # Step 4: Upload test cases to the folder in the cycle
     upload_test_cases_to_folder(zephyr_url, project_id, version_id, cycle_id, folder_id, account_id, api_token, test_cases)
 
-# Function to upload test cases (you can implement this part as per your existing logic)
-def upload_test_cases_to_folder(zephyr_url, project_id, version_id, cycle_id, folder_id, account_id, api_token, test_cases):
-    # Your logic to upload test cases goes here
-    print(f"Uploading test cases to folder ID: {folder_id} in cycle ID: {cycle_id}...")
-    # Implement the upload logic here
-
 # Sample Usage
 zephyr_url = "https://prod.play.zephyr.com"  # Replace with your Zephyr Cloud URL
 project_id = "12345"  # Replace with your project ID
@@ -147,6 +164,6 @@ cycle_name = "Regression Cycle"  # Replace with your test cycle name
 folder_name = "Smoke Tests"  # Replace with your folder name
 account_id = "your_jira_email"  # Your Jira account email
 api_token = "your_api_token"  # Your Jira API token
-test_cases = []  # Provide test cases as a list of dictionaries
+test_cases = ["TEST-123", "TEST-456"]  # Provide test case issue IDs
 
 handle_test_case_upload(zephyr_url, project_id, version_name, cycle_name, folder_name, account_id, api_token, test_cases)

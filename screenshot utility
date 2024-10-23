@@ -1,0 +1,134 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import pyautogui
+from docx import Document
+from docx.shared import Inches
+import os
+import io
+from PIL import Image as PILImage
+
+class ScreenshotUtility:
+    def __init__(self, master):
+        self.master = master
+        self.master.title("Screenshot Utility")
+        self.master.geometry("400x200")
+        
+        self.screenshot_images = []
+        self.location = ""
+
+        # Location label and entry
+        tk.Label(master, text="Location:").grid(row=0, column=0, padx=10, pady=5, sticky='e')
+        self.location_entry = tk.Entry(master, width=30)
+        self.location_entry.grid(row=0, column=1, padx=10, pady=5)
+        self.location_entry.bind("<Button-1>", self.browse_location)  # Open folder on click
+
+        # File name label and entry
+        tk.Label(master, text="File Name:").grid(row=1, column=0, padx=10, pady=5, sticky='e')
+        self.file_name_entry = tk.Entry(master, width=30)
+        self.file_name_entry.grid(row=1, column=1, padx=10, pady=5)
+
+        # Take Screenshot Button
+        self.screenshot_button = tk.Button(master, text="Take Screenshot", command=self.take_screenshot)
+        self.screenshot_button.grid(row=2, columnspan=2, padx=10, pady=5)
+
+        # Save Document Button
+        self.save_button = tk.Button(master, text="Save Document", command=self.save_document)
+        self.save_button.grid(row=3, columnspan=2, padx=10, pady=5)
+
+    def browse_location(self, event=None):
+        self.location = filedialog.askdirectory(initialdir=os.path.expanduser("~/Documents"))
+        self.location_entry.delete(0, tk.END)
+        self.location_entry.insert(0, self.location)
+
+    def take_screenshot(self):
+        self.location = self.location_entry.get()
+        file_name = self.file_name_entry.get()
+
+        if not self.location or not file_name:
+            messagebox.showerror("Error", "Location and File Name are mandatory!")
+            return
+
+        # Hide the utility window
+        self.master.withdraw()
+        
+        # Use after to allow the GUI to update and hide before taking the screenshot
+        self.master.after(500, self.capture_screenshot)
+
+    def capture_screenshot(self):
+        # Take the screenshot with full screen resolution
+        screenshot = pyautogui.screenshot()
+        # Save the screenshot in memory
+        image_stream = io.BytesIO()
+        screenshot.save(image_stream, format='PNG')
+        self.screenshot_images.append(image_stream)  # Store the image in memory
+
+        # Show pop-up notification
+        self.show_notification("Screenshot taken!")
+
+        # Show the utility window again
+        self.master.deiconify()
+
+    def show_notification(self, message):
+        # Create a pop-up notification window
+        popup = tk.Toplevel(self.master)
+        popup.title("Notification")
+        popup.geometry("200x100")
+        popup_label = tk.Label(popup, text=message)
+        popup_label.pack(pady=20)
+
+        # Center the popup window on the screen
+        screen_width = popup.winfo_screenwidth()
+        screen_height = popup.winfo_screenheight()
+        x = (screen_width // 2) - (200 // 2)  # Center horizontally
+        y = (screen_height // 2) - (100 // 2)  # Center vertically
+        popup.geometry(f"+{x}+{y}")
+
+        # Automatically close the popup after 1 second
+        popup.after(1000, popup.destroy)
+
+    def save_document(self):
+        if not self.screenshot_images:
+            messagebox.showwarning("Warning", "No screenshots taken!")
+            return
+
+        # Create a Word document
+        doc = Document()
+        for img_stream in self.screenshot_images:
+            # Open the image from the stream
+            img = PILImage.open(img_stream)
+            img_width, img_height = img.size
+            
+            # Calculate the width to fit within document margins (e.g., 6.5 inches)
+            max_width = 6.5 * 72  # 6.5 inches in points
+            aspect_ratio = img_height / img_width
+            
+            if img_width > max_width:
+                img_width = max_width
+                img_height = max_width * aspect_ratio
+            
+            # Save the image temporarily
+            temp_img_path = os.path.join(self.location, "temp_screenshot.png")
+            img.save(temp_img_path)  # Save the image temporarily
+            doc.add_picture(temp_img_path, width=Inches(img_width / 72))  # Insert with the adjusted width
+            os.remove(temp_img_path)  # Remove the temporary image file after adding
+
+        # Save the document
+        doc_file_path = os.path.join(self.location, f"{self.file_name_entry.get()}.docx")
+        doc.save(doc_file_path)
+
+        # Reset utility
+        self.reset_utility()
+        messagebox.showinfo("Success", f"Document saved as {doc_file_path}!")
+
+    def reset_utility(self):
+        self.location_entry.delete(0, tk.END)
+        self.file_name_entry.delete(0, tk.END)
+        self.screenshot_images.clear()
+
+# Create the main application window
+root = tk.Tk()
+screenshot_util = ScreenshotUtility(root)
+
+# Keep the utility window on top of other applications
+root.wm_attributes("-topmost", 1)
+root.mainloop()

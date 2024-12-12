@@ -1,21 +1,25 @@
-def remove_empty_fields(data):
-    """
-    Recursively remove keys with None, empty lists, or empty dictionaries.
-    Remove entire objects where all nested keys or the object itself are None or empty.
-    """
+import json
+
+def remove_none_values(data):
     if isinstance(data, dict):
-        # Process each key-value pair and recursively clean
-        cleaned_data = {
-            k: remove_empty_fields(v)
-            for k, v in data.items()
-            if v not in [None, {}, []]  # Remove direct None, empty dicts, and lists
-        }
-        # If the entire dictionary becomes empty, return None to signal its removal
-        return cleaned_data if cleaned_data else None
+        for key, value in list(data.items()):
+            if value is None:
+                del data[key]
+            else:
+                remove_none_values(value)
     elif isinstance(data, list):
-        # Recursively clean each element in the list
-        cleaned_list = [remove_empty_fields(v) for v in data if v not in [None, {}, []]]
-        return cleaned_list if cleaned_list else None
-    else:
-        # For non-dict, non-list values, return as is
-        return data
+        for i in range(len(data) - 1, -1, -1):
+            if data[i] is None:
+                del data[i]
+            else:
+                remove_none_values(data[i])
+
+# Load the JSON data
+with open('input.json', 'r') as f:
+    input_json = json.load(f)
+
+# Remove None values recursively
+remove_none_values(input_json)
+
+# Print the modified JSON
+print(json.dumps(input_json, indent=4))

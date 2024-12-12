@@ -1,13 +1,16 @@
 def remove_empty_fields(data):
         """
         Recursively remove keys with None, empty lists, or empty dictionaries.
+        Also remove dictionaries that contain only keys with None or empty values.
         """
         if isinstance(data, dict):
-            return {
+            cleaned_data = {
                 k: remove_empty_fields(v)
                 for k, v in data.items()
                 if v not in [None, {}, []]
             }
+            # Remove the dict itself if all its keys are removed
+            return cleaned_data if cleaned_data else None
         elif isinstance(data, list):
             return [remove_empty_fields(v) for v in data if v not in [None, {}, []]]
         return data

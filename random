@@ -9,4 +9,5 @@ def remove_empty_fields(data):
                 if v not in [None, {}, []]
             }
         elif isinstance(data, list):
-            return [rem
+            return [remove_empty_fields(v) for v in data if v not in [None, {}, []]]
+        return data

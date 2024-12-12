@@ -1,25 +1,30 @@
-import json
-
-def remove_none_values(data):
+def remove_objects_with_none(data):
+    """
+    Recursively removes objects from the JSON if any key in those objects has a None value.
+    """
     if isinstance(data, dict):
-        for key, value in list(data.items()):
-            if value is None:
-                del data[key]
-            else:
-                remove_none_values(value)
+        # If any value is None, remove the entire object
+        if any(value is None for value in data.values()):
+            return None
+        # Recursively clean each value in the dictionary
+        cleaned_data = {
+            key: remove_objects_with_none(value)
+            for key, value in data.items()
+            if remove_objects_with_none(value) is not None
+        }
+        return cleaned_data if cleaned_data else None
     elif isinstance(data, list):
-        for i in range(len(data) - 1, -1, -1):
-            if data[i] is None:
-                del data[i]
-            else:
-                remove_none_values(data[i])
+        # Process each list item recursively
+        cleaned_list = [remove_objects_with_none(item) for item in data]
+        return [item for item in cleaned_list if item is not None]
+    else:
+        # For non-dict and non-list values, return as is
+        return data
 
-# Load the JSON data
-with open('input.json', 'r') as f:
-    input_json = json.load(f)
+# Example usage
+issue_data = {'fields': {'priority': {'value': None}}}
 
-# Remove None values recursively
-remove_none_values(input_json)
+cleaned_data = remove_objects_with_none(issue_data)
 
-# Print the modified JSON
-print(json.dumps(input_json, indent=4))
+import json
+print(json.dumps(cleaned_data, indent=2))

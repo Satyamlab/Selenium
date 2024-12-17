@@ -8,3 +8,4 @@ def remove_none_and_string_none(d):
     elif isinstance(d, list):
         return [remove_none_and_string_none(item) for item in d if item is not None and item != "None"]
     else:
+        return d

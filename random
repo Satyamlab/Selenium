@@ -1,8 +1,10 @@
-def remove_none(obj):
-    """Recursively removes keys with None values from a dictionary or list."""
-    if isinstance(obj, dict):
-        return {k: remove_none(v) for k, v in obj.items() if v is not None}
-    elif isinstance(obj, list):
-        return [remove_none(item) for item in obj if item is not None]
+def remove_none_and_string_none(d):
+    """
+    Recursively removes keys with None or 'None' string values from a dictionary or list.
+    """
+    if isinstance(d, dict):
+        return {k: remove_none_and_string_none(v) for k, v in d.items() 
+                if v is not None and v != "None"}
+    elif isinstance(d, list):
+        return [remove_none_and_string_none(item) for item in d if item is not None and item != "None"]
     else:
-        return obj

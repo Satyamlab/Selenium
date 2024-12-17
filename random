@@ -1,18 +1,8 @@
-@echo off
-
-:: Define a marker file
-set MARKER_FILE=installation_done.txt
-
-:: Check if the marker file exists
-if exist "%MARKER_FILE%" (
-    echo Requirements already installed. Skipping installation step...
-) else (
-    echo Installing requirements...
-    pip install -r requirements.txt
-    echo Installation complete. Creating marker file...
-    echo Installed on %date% %time% > "%MARKER_FILE%"
-)
-
-:: Run your operations
-echo Running operations...
-:: Add your operations here
+def remove_none(obj):
+    """Recursively removes keys with None values from a dictionary or list."""
+    if isinstance(obj, dict):
+        return {k: remove_none(v) for k, v in obj.items() if v is not None}
+    elif isinstance(obj, list):
+        return [remove_none(item) for item in obj if item is not None]
+    else:
+        return obj

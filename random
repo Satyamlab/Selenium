@@ -1,46 +1,18 @@
-from openpyxl import load_workbook
+@echo off
 
-def update_issue_key_inplace(file_path, summary_key_dict):
-    """
-    Updates the 'issue_key' column in an Excel file in-place based on matching 'summary' column values using openpyxl.
+:: Define a marker file
+set MARKER_FILE=installation_done.txt
 
-    Parameters:
-        file_path (str): Path to the Excel file to update.
-        summary_key_dict (dict): A dictionary where keys are 'summary' values and values are 'key'.
+:: Check if the marker file exists
+if exist "%MARKER_FILE%" (
+    echo Requirements already installed. Skipping installation step...
+) else (
+    echo Installing requirements...
+    pip install -r requirements.txt
+    echo Installation complete. Creating marker file...
+    echo Installed on %date% %time% > "%MARKER_FILE%"
+)
 
-    Returns:
-        None
-    """
-    # Load the Excel workbook and active sheet
-    workbook = load_workbook(file_path)
-    sheet = workbook.active
-
-    # Find the column indices for 'summary' and 'issue_key'
-    headers = {cell.value: idx for idx, cell in enumerate(sheet[1], start=1)}  # Header row assumed as first row
-
-    summary_col = headers.get("summary")
-    issue_key_col = headers.get("issue_key")
-
-    # If 'issue_key' column is not found, add it as the last column
-    if issue_key_col is None:
-        issue_key_col = len(headers) + 1
-        sheet.cell(row=1, column=issue_key_col).value = "issue_key"
-
-    # Iterate through rows and update 'issue_key' where 'summary' matches
-    for row in range(2, sheet.max_row + 1):  # Start from row 2 (data rows)
-        summary_value = sheet.cell(row=row, column=summary_col).value
-        if summary_value in summary_key_dict:
-            sheet.cell(row=row, column=issue_key_col).value = summary_key_dict[summary_value]
-
-    # Save the workbook in place
-    workbook.save(file_path)
-    print(f"Excel file updated in-place: {file_path}")
-
-# Example usage
-summary_key_dict = {
-    "Summary 1": "KEY-101",
-    "Summary 2": "KEY-102",
-    "Summary 3": "KEY-103"
-}
-
-update_issue_key_inplace(file_path="input.xlsx", summary_key_dict=summary_key_dict)
+:: Run your operations
+echo Running operations...
+:: Add your operations here

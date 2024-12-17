@@ -1,11 +1,13 @@
-def remove_none_and_string_none(d):
-    """
-    Recursively removes keys with None or 'None' string values from a dictionary or list.
-    """
-    if isinstance(d, dict):
-        return {k: remove_none_and_string_none(v) for k, v in d.items() 
-                if v is not None and v != "None"}
+   if isinstance(d, dict):
+        # Process each key-value pair
+        return {k: remove_none_and_string_none(v) 
+                for k, v in d.items() 
+                if v not in [None, "None"]}
     elif isinstance(d, list):
-        return [remove_none_and_string_none(item) for item in d if item is not None and item != "None"]
+        # Process each item in the list
+        return [remove_none_and_string_none(item) 
+                for item in d 
+                if item not in [None, "None"]]
     else:
+        # Return the value as-is for other data types
         return d

@@ -4,11 +4,17 @@
             k: clean_empty_values(v)
             for k, v in obj.items()
         }
-        # Remove keys where the value is None or an empty dictionary after cleaning
+        # Remove keys where the value is None, an empty dictionary, or an empty list
         return {k: v for k, v in cleaned.items() if v not in [None, {}, []]}
     elif isinstance(obj, list):
-        # Clean lists by recursively cleaning their items
-        cleaned = [clean_empty_values(item) for item in obj if item not in [None, "None"]]
+        # Recursively clean each item in the list
+        cleaned = [
+            clean_empty_values(item)
+            for item in obj
+            if item not in [None, "None"]  # Remove None/"None" values
+        ]
+        # Remove empty or invalid dictionaries from the list
+        cleaned = [item for item in cleaned if item not in [None, {}, []]]
         # Return None if the list becomes empty after cleaning
         return cleaned if cleaned else None
     else:

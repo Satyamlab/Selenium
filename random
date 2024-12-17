@@ -1,13 +1,12 @@
-   if isinstance(d, dict):
-        # Process each key-value pair
-        return {k: remove_none_and_string_none(v) 
+    if isinstance(d, dict):
+        # Filter out None, 'None', {}, and []
+        return {k: clean_empty_values(v) 
                 for k, v in d.items() 
-                if v not in [None, "None"]}
+                if v not in [None, "None", {}, []]}
     elif isinstance(d, list):
-        # Process each item in the list
-        return [remove_none_and_string_none(item) 
+        # Filter out None and 'None' from lists
+        return [clean_empty_values(item) 
                 for item in d 
                 if item not in [None, "None"]]
     else:
-        # Return the value as-is for other data types
         return d

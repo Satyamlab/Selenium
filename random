@@ -1,12 +1,16 @@
-    if isinstance(d, dict):
-        # Filter out None, 'None', {}, and []
-        return {k: clean_empty_values(v) 
-                for k, v in d.items() 
-                if v not in [None, "None", {}, []]}
-    elif isinstance(d, list):
-        # Filter out None and 'None' from lists
-        return [clean_empty_values(item) 
-                for item in d 
-                if item not in [None, "None"]]
+    if isinstance(obj, dict):
+        # Recursively clean each key-value pair
+        cleaned = {
+            k: clean_empty_values(v)
+            for k, v in obj.items()
+        }
+        # Remove keys where the value is None or an empty dictionary after cleaning
+        return {k: v for k, v in cleaned.items() if v not in [None, {}, []]}
+    elif isinstance(obj, list):
+        # Clean lists by recursively cleaning their items
+        cleaned = [clean_empty_values(item) for item in obj if item not in [None, "None"]]
+        # Return None if the list becomes empty after cleaning
+        return cleaned if cleaned else None
     else:
-        return d
+        # Return the value itself for non-dict/list types
+        return obj

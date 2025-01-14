@@ -1,0 +1,146 @@
+Jira Utility Documentation
+
+Overview
+
+This document explains the functionality and features of the Jira utility developed in Python. The utility is designed to streamline the process of managing test cases in Jira, particularly for those using Zephyr for Jira Cloud integration. It automates repetitive tasks and ensures consistency across Jira operations.
+
+Key Features
+
+Template Generation:
+
+Automatically generates an Excel template for uploading test cases.
+
+Pre-populates columns in the template with values fetched from Jira, especially for dropdown fields.
+
+Ensures mandatory fields are clearly marked.
+
+Test Case Upload:
+
+Reads the prepared Excel file and uploads test cases to Jira.
+
+Differentiates new test cases by changes in the summary column.
+
+Handles test steps, expected results, and test data effectively.
+
+Confirmation Mechanism:
+
+Prompts the user for confirmation before uploading test cases to Jira to avoid accidental uploads.
+
+Error Handling:
+
+Provides detailed error messages if the Excel file contains invalid or missing data.
+
+Handles large dropdown lists without errors when opening Excel.
+
+Prerequisites
+
+Environment Setup:
+
+Install Python (3.7 or later).
+
+Required Python libraries:
+
+pip install pandas openpyxl requests
+
+Set up an .env file in the main folder with the following details:
+
+JIRA_BASE_URL=<your_jira_base_url>
+JIRA_USERNAME=<your_jira_username>
+JIRA_API_TOKEN=<your_jira_api_token>
+
+Permissions:
+
+Ensure the user has necessary permissions in Jira to create and manage test cases.
+
+Usage Instructions
+
+Running the Utility:
+
+Navigate to the folder containing the utility code.
+
+Run the script using:
+
+python jira_utility.py
+
+Generating the Template:
+
+On the first run, the utility will prompt to create a template Excel file.
+
+If the template already exists, the utility skips creation unless explicitly requested.
+
+Preparing Test Cases:
+
+Open the generated template.
+
+Populate mandatory columns (e.g., Summary, Test Steps, Expected Results, Test Data).
+
+Save the file before proceeding.
+
+Uploading Test Cases:
+
+The utility reads the prepared Excel file.
+
+It uploads test cases, grouping rows with the same summary as a single test case.
+
+Confirmation Before Upload:
+
+The utility will display a summary of the test cases to be uploaded.
+
+Confirm to proceed with the upload.
+
+Example Workflow
+
+Generate Template:
+
+python jira_utility.py --generate-template
+
+Output: A template file named TestCasesTemplate.xlsx is created.
+
+Prepare Test Cases:
+Populate the template with:
+
+Test Steps: Login to the application.
+
+Expected Result: User is logged in successfully.
+
+Test Data: Username and password.
+
+Upload Test Cases:
+
+python jira_utility.py --upload TestCasesTemplate.xlsx
+
+Output: Test cases are uploaded to Jira.
+
+Additional Features
+
+Test Data Validation:
+
+Validates that all mandatory fields are filled.
+
+Highlights missing or invalid data.
+
+Batch Processing:
+
+Handles large datasets efficiently.
+
+Common Issues and Troubleshooting
+
+Error: Invalid Credentials
+
+Check the .env file for correct API token and username.
+
+Error: Missing Mandatory Fields
+
+Verify the Excel file for missing data in mandatory columns.
+
+Error: Excel File Already Open
+
+Ensure the file is closed before running the utility.
+
+Future Enhancements
+
+Add support for other test management tools.
+
+Implement advanced reporting features.
+
+Provide a GUI for non-technical users.
